@@ -49,6 +49,7 @@ export function getRpmCount(key?: string): number {
   
   let total = 0;
   for (const k in requestTimestamps) {
+    if (k === 'undefined') continue;
     while (requestTimestamps[k].length > 0 && now - requestTimestamps[k][0] > 60000) {
       requestTimestamps[k].shift();
     }
@@ -181,13 +182,40 @@ export interface IntelligenceData {
   isRateLimited?: boolean;
 }
 
-const cache: Record<string, { data: any; timestamp: number }> = {};
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+function getLocalCache(key: string) {
+  try {
+    const cached = localStorage.getItem(key);
+    if (cached) {
+      const parsed = JSON.parse(cached);
+      if (Date.now() - parsed.timestamp < CACHE_TTL) {
+        return parsed.data;
+      }
+      localStorage.removeItem(key);
+    }
+  } catch (e) {
+    // ignore
+  }
+  return null;
+}
+
+function setLocalCache(key: string, data: any) {
+  try {
+    localStorage.setItem(key, JSON.stringify({ data, timestamp: Date.now() }));
+  } catch (e) {
+    // ignore
+  }
+}
 
 export async function fetchIntelligence(categoryId: string, categoryQuery: string, customApiKey?: string, forceRefresh = false): Promise<IntelligenceData> {
   const cacheKey = `intel_${categoryId}_${customApiKey || 'default'}`;
-  if (!forceRefresh && cache[cacheKey] && Date.now() - cache[cacheKey].timestamp < CACHE_TTL) {
-    return cache[cacheKey].data as IntelligenceData;
+  
+  if (!forceRefresh) {
+    const cachedData = getLocalCache(cacheKey);
+    if (cachedData) {
+      return cachedData as IntelligenceData;
+    }
   }
 
   let prompt = '';
@@ -251,7 +279,7 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
         text,
         sources: uniqueSources,
       };
-      cache[cacheKey] = { data: result, timestamp: Date.now() };
+      setLocalCache(cacheKey, result);
       return result;
     } catch (error: any) {
       keyUsageStats[key].errors++;
@@ -313,8 +341,12 @@ export interface ThreatLevelData {
 
 export async function fetchOverallThreatLevel(customApiKey?: string, forceRefresh = false): Promise<ThreatLevelData> {
   const cacheKey = `threat_${customApiKey || 'default'}`;
-  if (!forceRefresh && cache[cacheKey] && Date.now() - cache[cacheKey].timestamp < CACHE_TTL) {
-    return cache[cacheKey].data as ThreatLevelData;
+  
+  if (!forceRefresh) {
+    const cachedData = getLocalCache(cacheKey);
+    if (cachedData) {
+      return cachedData as ThreatLevelData;
+    }
   }
 
   const prompt = `請搜尋今日關於台海局勢的新聞（包含國內外媒體及社群網路），評估目前的整體威脅等級。
@@ -400,7 +432,7 @@ export async function fetchOverallThreatLevel(customApiKey?: string, forceRefres
       keyUsageStats[key].requestsToday++;
       keyUsageStats[key].lastUsed = new Date();
       
-      cache[cacheKey] = { data, timestamp: Date.now() };
+      setLocalCache(cacheKey, data);
       return data;
     } catch (e: any) {
       keyUsageStats[key].errors++;
