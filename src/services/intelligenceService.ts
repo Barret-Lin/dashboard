@@ -1,5 +1,72 @@
 import { GoogleGenAI, Type } from '@google/genai';
 
+const RPM_LIMIT = 15;
+const RPM_WINDOW = 60000; // 60 seconds
+
+class ApiRateManager {
+  private callTimestamps: number[] = [];
+  private listeners: ((count: number) => void)[] = [];
+
+  constructor() {
+    try {
+      const stored = localStorage.getItem('api_call_history');
+      if (stored) {
+        this.callTimestamps = JSON.parse(stored);
+        this.cleanHistory();
+      }
+    } catch (e) {}
+  }
+
+  private cleanHistory() {
+    const now = Date.now();
+    this.callTimestamps = this.callTimestamps.filter(t => now - t < RPM_WINDOW);
+    try {
+      localStorage.setItem('api_call_history', JSON.stringify(this.callTimestamps));
+    } catch (e) {}
+  }
+
+  public getCount(): number {
+    this.cleanHistory();
+    return this.callTimestamps.length;
+  }
+
+  public subscribe(listener: (count: number) => void) {
+    this.listeners.push(listener);
+    listener(this.getCount());
+    return () => {
+      this.listeners = this.listeners.filter(l => l !== listener);
+    };
+  }
+
+  private notify() {
+    const count = this.getCount();
+    this.listeners.forEach(l => l(count));
+  }
+
+  public async recordCall() {
+    this.cleanHistory();
+    this.callTimestamps.push(Date.now());
+    try {
+      localStorage.setItem('api_call_history', JSON.stringify(this.callTimestamps));
+    } catch (e) {}
+    this.notify();
+  }
+
+  public async waitForSlot() {
+    while (true) {
+      this.cleanHistory();
+      if (this.callTimestamps.length < RPM_LIMIT) {
+        break;
+      }
+      const oldest = this.callTimestamps[0];
+      const waitTime = RPM_WINDOW - (Date.now() - oldest) + 100;
+      await new Promise(resolve => setTimeout(resolve, waitTime));
+    }
+  }
+}
+
+export const apiRateManager = new ApiRateManager();
+
 let apiLock = Promise.resolve();
 
 async function executeWithLock<T>(fn: () => Promise<T>): Promise<T> {
@@ -13,6 +80,8 @@ async function executeWithLock<T>(fn: () => Promise<T>): Promise<T> {
   
   await currentLock;
   try {
+    await apiRateManager.waitForSlot();
+    await apiRateManager.recordCall();
     return await fn();
   } finally {
     // Add a 500ms delay between requests to prevent concurrency/burst rate limits

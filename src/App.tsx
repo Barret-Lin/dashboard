@@ -8,7 +8,7 @@ import { Crosshair, TrendingDown, Globe, RefreshCw, AlertTriangle, ExternalLink,
 import Markdown from 'react-markdown';
 import { motion, AnimatePresence } from 'motion/react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
-import { fetchIntelligence, fetchOverallThreatLevel, IntelligenceData, ThreatLevelData } from './services/intelligenceService';
+import { fetchIntelligence, fetchOverallThreatLevel, IntelligenceData, ThreatLevelData, apiRateManager } from './services/intelligenceService';
 
 const CATEGORIES = [
   { id: 'weekly_threat', name: '本日最新威脅情資', icon: Flame, query: '綜合威脅情資、重大事件總結' },
@@ -127,6 +127,14 @@ export default function App() {
   const [showApiKeyInput, setShowApiKeyInput] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [apiKeyModalReason, setApiKeyModalReason] = useState<'RATE_LIMIT' | 'MANUAL' | 'INVALID' | 'MISSING'>('MISSING');
+  const [apiCallCount, setApiCallCount] = useState(0);
+
+  useEffect(() => {
+    const unsubscribe = apiRateManager.subscribe((count) => {
+      setApiCallCount(count);
+    });
+    return unsubscribe;
+  }, []);
 
   useEffect(() => {
     try {
@@ -243,13 +251,17 @@ export default function App() {
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
                 <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
               </div>
-              <h1 className="text-3xl font-bold tracking-tight text-zinc-100 uppercase font-mono">台海戰情即時情報網 <span className="text-xs text-zinc-600 font-mono ml-2">v1.0.7</span></h1>
+              <h1 className="text-3xl font-bold tracking-tight text-zinc-100 uppercase font-mono">台海戰情即時情報網 <span className="text-xs text-zinc-600 font-mono ml-2">v1.0.8</span></h1>
             </div>
             <div className="flex items-center gap-4">
               <p className="text-zinc-500 font-mono text-sm flex items-center gap-2">
                 <Clock className="w-4 h-4" />
                 SYS.TIME: {lastUpdated ? lastUpdated.toLocaleTimeString() : '--:--:--'}
               </p>
+              <div className={`flex items-center gap-2 px-2 py-1 rounded border font-mono text-xs ${apiCallCount >= 14 ? 'bg-red-500/20 border-red-500/50 text-red-400 animate-pulse' : 'bg-zinc-900 border-zinc-800 text-zinc-500'}`} title="API 呼叫次數 (每分鐘上限 15 次)">
+                <Activity className="w-3 h-3" />
+                API: {apiCallCount}/15 RPM
+              </div>
             </div>
           </div>
 
@@ -308,11 +320,11 @@ export default function App() {
               </button>
               <button 
                 onClick={() => handleRefreshAll()}
-                disabled={threatLoading || isLoading}
+                disabled={threatLoading || isLoading || apiCallCount >= 14}
                 className="p-2 hover:bg-zinc-800 rounded-full transition-colors disabled:opacity-50"
-                title="立即更新 (Refresh Intelligence)"
+                title={apiCallCount >= 14 ? "API 呼叫頻率過高，請稍後再試" : "立即更新 (Refresh Intelligence)"}
               >
-                <RefreshCw className={`w-5 h-5 text-zinc-400 ${threatLoading || isLoading ? 'animate-spin' : ''}`} />
+                <RefreshCw className={`w-5 h-5 ${apiCallCount >= 14 ? 'text-red-500' : 'text-zinc-400'} ${threatLoading || isLoading ? 'animate-spin' : ''}`} />
               </button>
               <button 
                 onClick={() => {
@@ -339,11 +351,18 @@ export default function App() {
                 const Icon = cat.icon;
                 const isActive = activeTab === cat.id;
                 const updatedTime = categoryUpdated[cat.id];
+                const isRateLimited = apiCallCount >= 14 && !isActive;
                 return (
                   <button
                     key={cat.id}
-                    onClick={() => setActiveTab(cat.id)}
-                    className={`shrink-0 lg:w-full flex flex-col lg:flex-row lg:items-center gap-2 lg:gap-3 px-4 py-3 text-left transition-all duration-200 font-mono text-sm uppercase ${
+                    onClick={() => {
+                      if (!isRateLimited) {
+                        setActiveTab(cat.id);
+                      }
+                    }}
+                    disabled={isRateLimited}
+                    title={isRateLimited ? "API 呼叫頻率過高，請稍後再試" : ""}
+                    className={`shrink-0 lg:w-full flex flex-col lg:flex-row lg:items-center gap-2 lg:gap-3 px-4 py-3 text-left transition-all duration-200 font-mono text-sm uppercase disabled:opacity-50 disabled:cursor-not-allowed ${
                       isActive 
                         ? 'bg-[#1a1a1a] text-zinc-100 tech-border border-l-2 border-l-red-500' 
                         : 'text-zinc-500 hover:bg-[#0f0f0f] hover:text-zinc-300 border border-transparent'
