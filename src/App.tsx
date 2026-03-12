@@ -239,7 +239,7 @@ export default function App() {
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
                 <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
               </div>
-              <h1 className="text-3xl font-bold tracking-tight text-zinc-100 uppercase font-mono">台海戰情即時情報網 <span className="text-xs text-zinc-600 font-mono ml-2">v1.0.4</span></h1>
+              <h1 className="text-3xl font-bold tracking-tight text-zinc-100 uppercase font-mono">台海戰情即時情報網 <span className="text-xs text-zinc-600 font-mono ml-2">v1.0.5</span></h1>
             </div>
             <div className="flex items-center gap-4">
               <p className="text-zinc-500 font-mono text-sm flex items-center gap-2">
@@ -479,8 +479,8 @@ export default function App() {
               </p>
               <form onSubmit={(e) => {
                 e.preventDefault();
-                // Instead of aggressive regex, just remove all whitespace and BOM characters
-                const cleanKey = tempApiKey.replace(/[\s\uFEFF\xA0]+/g, '');
+                // Strictly remove ALL characters except valid Base64URL chars used in Google API keys
+                const cleanKey = tempApiKey.replace(/[^a-zA-Z0-9_-]/g, '');
                 if (cleanKey) {
                   setCustomApiKey(cleanKey);
                   setShowApiKeyInput(false);
@@ -491,19 +491,30 @@ export default function App() {
                   setTimeout(() => handleRefreshAll(''), 100);
                 }
               }}>
-                <div className="relative flex items-center mb-4">
-                  <input 
-                    type={showPassword ? "text" : "password"} 
-                    value={tempApiKey}
-                    onChange={(e) => { setTempApiKey(e.target.value); }}
-                    placeholder="AIzaSy..."
-                    className={`w-full bg-black border border-zinc-700 rounded-lg px-4 py-2 pr-10 text-zinc-200 focus:outline-none focus:ring-1 font-mono text-sm ${apiKeyModalReason === 'RATE_LIMIT' || apiKeyModalReason === 'INVALID' ? 'focus:border-red-500 focus:ring-red-500' : 'focus:border-blue-500 focus:ring-blue-500'}`}
-                    autoFocus
-                  />
+                <div className="relative flex items-start mb-4">
+                  {showPassword ? (
+                    <textarea 
+                      value={tempApiKey}
+                      onChange={(e) => { setTempApiKey(e.target.value); }}
+                      placeholder="AIzaSy..."
+                      rows={Math.min(5, Math.max(1, Math.ceil(tempApiKey.length / 32)))}
+                      className={`w-full bg-black border border-zinc-700 rounded-lg px-4 py-2 pr-10 text-zinc-200 focus:outline-none focus:ring-1 font-mono text-sm resize-none break-all ${apiKeyModalReason === 'RATE_LIMIT' || apiKeyModalReason === 'INVALID' ? 'focus:border-red-500 focus:ring-red-500' : 'focus:border-blue-500 focus:ring-blue-500'}`}
+                      autoFocus
+                    />
+                  ) : (
+                    <input 
+                      type="password" 
+                      value={tempApiKey}
+                      onChange={(e) => { setTempApiKey(e.target.value); }}
+                      placeholder="AIzaSy..."
+                      className={`w-full bg-black border border-zinc-700 rounded-lg px-4 py-2 pr-10 text-zinc-200 focus:outline-none focus:ring-1 font-mono text-sm ${apiKeyModalReason === 'RATE_LIMIT' || apiKeyModalReason === 'INVALID' ? 'focus:border-red-500 focus:ring-red-500' : 'focus:border-blue-500 focus:ring-blue-500'}`}
+                      autoFocus
+                    />
+                  )}
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 text-zinc-500 hover:text-zinc-300 transition-colors"
+                    className="absolute right-3 top-2.5 text-zinc-500 hover:text-zinc-300 transition-colors"
                   >
                     {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>

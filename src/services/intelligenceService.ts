@@ -55,7 +55,7 @@ function setLocalCache(key: string, data: any) {
 }
 
 export async function fetchIntelligence(categoryId: string, categoryQuery: string, customApiKey?: string, forceRefresh = false): Promise<IntelligenceData> {
-  const cleanApiKey = customApiKey?.replace(/[\s\uFEFF\xA0]+/g, '');
+  const cleanApiKey = customApiKey?.replace(/[^a-zA-Z0-9_-]/g, '');
   if (!cleanApiKey) {
     return {
       text: `⚠️ **需要 API 金鑰**\n\n請在設定中輸入您的 Google Gemini API 金鑰以取得即時戰情。`,
@@ -183,7 +183,7 @@ export interface ThreatLevelData {
 }
 
 export async function fetchOverallThreatLevel(customApiKey?: string, forceRefresh = false): Promise<ThreatLevelData> {
-  const cleanApiKey = customApiKey?.replace(/[\s\uFEFF\xA0]+/g, '');
+  const cleanApiKey = customApiKey?.replace(/[^a-zA-Z0-9_-]/g, '');
   if (!cleanApiKey) {
     return { 
       level: 'UNKNOWN', 
