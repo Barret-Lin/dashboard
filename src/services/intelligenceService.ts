@@ -55,7 +55,8 @@ function setLocalCache(key: string, data: any) {
 }
 
 export async function fetchIntelligence(categoryId: string, categoryQuery: string, customApiKey?: string, forceRefresh = false): Promise<IntelligenceData> {
-  if (!customApiKey) {
+  const cleanApiKey = customApiKey?.replace(/[^a-zA-Z0-9_-]/g, '');
+  if (!cleanApiKey) {
     return {
       text: `⚠️ **需要 API 金鑰**\n\n請在設定中輸入您的 Google Gemini API 金鑰以取得即時戰情。`,
       sources: [],
@@ -63,7 +64,7 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
     };
   }
 
-  const cacheKey = `intel_${categoryId}_${customApiKey || 'default'}`;
+  const cacheKey = `intel_${categoryId}_${cleanApiKey || 'default'}`;
   
   if (!forceRefresh) {
     const cachedData = getLocalCache(cacheKey);
@@ -97,7 +98,7 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
 
   let lastError: any = null;
 
-  const ai = new GoogleGenAI({ apiKey: customApiKey });
+  const ai = new GoogleGenAI({ apiKey: cleanApiKey });
   try {
     const response = await executeWithLock(() => ai.models.generateContent({
       model: 'gemini-3-flash-preview',
@@ -182,7 +183,8 @@ export interface ThreatLevelData {
 }
 
 export async function fetchOverallThreatLevel(customApiKey?: string, forceRefresh = false): Promise<ThreatLevelData> {
-  if (!customApiKey) {
+  const cleanApiKey = customApiKey?.replace(/[^a-zA-Z0-9_-]/g, '');
+  if (!cleanApiKey) {
     return { 
       level: 'UNKNOWN', 
       summary: `請輸入自訂 API Key 以取得威脅等級。`, 
@@ -190,7 +192,7 @@ export async function fetchOverallThreatLevel(customApiKey?: string, forceRefres
     };
   }
 
-  const cacheKey = `threat_${customApiKey || 'default'}`;
+  const cacheKey = `threat_${cleanApiKey || 'default'}`;
   
   if (!forceRefresh) {
     const cachedData = getLocalCache(cacheKey);
@@ -217,7 +219,7 @@ export async function fetchOverallThreatLevel(customApiKey?: string, forceRefres
 
   let lastError: any = null;
 
-  const ai = new GoogleGenAI({ apiKey: customApiKey });
+  const ai = new GoogleGenAI({ apiKey: cleanApiKey });
   try {
     const response = await executeWithLock(() => ai.models.generateContent({
       model: 'gemini-3-flash-preview',
