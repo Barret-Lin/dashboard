@@ -148,6 +148,19 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
     };
   }
 
+  if (lastError) {
+    errorMessage += `\n\n**錯誤細節：**\n\`${lastError.message || String(lastError)}\``;
+    
+    // If API key is invalid, trigger the modal
+    if (lastError?.message?.includes('API key not valid') || lastError?.message?.includes('API_KEY_INVALID')) {
+      return {
+        text: `⚠️ **API 金鑰無效**\n\n您輸入的 API 金鑰無效，請重新輸入。\n\n**原始錯誤訊息：**\n\`${lastError.message}\``,
+        sources: [],
+        isRateLimited: true // Reuse this flag to trigger the modal
+      };
+    }
+  }
+
   return {
     text: errorMessage,
     sources: [],
@@ -281,5 +294,13 @@ export async function fetchOverallThreatLevel(customApiKey?: string, forceRefres
     };
   }
 
-  return { level: 'ELEVATED', summary: '無法取得即時威脅等級，請保持警戒。' };
+  if (lastError?.message?.includes('API key not valid') || lastError?.message?.includes('API_KEY_INVALID')) {
+    return { 
+      level: 'UNKNOWN', 
+      summary: `API 金鑰無效，請重新輸入。`, 
+      isRateLimited: true 
+    };
+  }
+
+  return { level: 'ELEVATED', summary: `無法取得即時威脅等級，請保持警戒。${lastError ? ` (${lastError.message || 'Unknown Error'})` : ''}` };
 }
