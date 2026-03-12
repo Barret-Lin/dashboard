@@ -26,30 +26,6 @@ export interface IntelligenceData {
   isRateLimited?: boolean;
 }
 
-export function getApiUsage(apiKey: string): number {
-  if (!apiKey) return 0;
-  const today = new Date().toLocaleDateString('en-US', { timeZone: 'America/Los_Angeles' });
-  const storageKey = `api_usage_${apiKey.slice(-6)}_${today}`;
-  try {
-    return parseInt(localStorage.getItem(storageKey) || '0', 10);
-  } catch (e) {
-    return 0;
-  }
-}
-
-export function recordApiRequest(apiKey: string) {
-  if (!apiKey) return;
-  const today = new Date().toLocaleDateString('en-US', { timeZone: 'America/Los_Angeles' });
-  const storageKey = `api_usage_${apiKey.slice(-6)}_${today}`;
-  try {
-    const current = parseInt(localStorage.getItem(storageKey) || '0', 10);
-    localStorage.setItem(storageKey, (current + 1).toString());
-    window.dispatchEvent(new CustomEvent('api-usage-updated', { detail: { apiKey } }));
-  } catch (e) {
-    // ignore
-  }
-}
-
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
 function getLocalCache(key: string) {
@@ -121,7 +97,6 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
 
   const ai = new GoogleGenAI({ apiKey: customApiKey });
   try {
-    recordApiRequest(customApiKey);
     const response = await executeWithLock(() => ai.models.generateContent({
       model: 'gemini-3-flash-preview',
       contents: prompt,
@@ -227,7 +202,6 @@ export async function fetchOverallThreatLevel(customApiKey?: string, forceRefres
 
   const ai = new GoogleGenAI({ apiKey: customApiKey });
   try {
-    recordApiRequest(customApiKey);
     const response = await executeWithLock(() => ai.models.generateContent({
       model: 'gemini-3-flash-preview',
       contents: prompt,

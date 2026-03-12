@@ -4,11 +4,11 @@
  */
 
 import { useState, useEffect } from 'react';
-import { Crosshair, TrendingDown, Globe, RefreshCw, AlertTriangle, ExternalLink, Radar, Clock, Flame, Key, Lock, Unlock, Copy, Check } from 'lucide-react';
+import { Crosshair, TrendingDown, Globe, RefreshCw, AlertTriangle, ExternalLink, Radar, Clock, Flame, Key, Lock, Unlock, Copy, Check, Activity } from 'lucide-react';
 import Markdown from 'react-markdown';
 import { motion, AnimatePresence } from 'motion/react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
-import { fetchIntelligence, fetchOverallThreatLevel, IntelligenceData, ThreatLevelData, getApiUsage } from './services/intelligenceService';
+import { fetchIntelligence, fetchOverallThreatLevel, IntelligenceData, ThreatLevelData } from './services/intelligenceService';
 
 const CATEGORIES = [
   { id: 'weekly_threat', name: '本日最新威脅情資', icon: Flame, query: '綜合威脅情資、重大事件總結' },
@@ -103,35 +103,6 @@ function CopyableSourceCard({ source }: { source: { title: string; uri: string }
       >
         {copied ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
       </button>
-    </div>
-  );
-}
-
-function QuotaTracker({ apiKey }: { apiKey: string }) {
-  const [usage, setUsage] = useState(() => getApiUsage(apiKey));
-
-  useEffect(() => {
-    setUsage(getApiUsage(apiKey));
-    
-    const handleUsageUpdate = (e: any) => {
-      if (e.detail?.apiKey === apiKey) {
-        setUsage(getApiUsage(apiKey));
-      }
-    };
-    
-    window.addEventListener('api-usage-updated', handleUsageUpdate);
-    return () => window.removeEventListener('api-usage-updated', handleUsageUpdate);
-  }, [apiKey]);
-
-  if (!apiKey) return null;
-
-  const remaining = Math.max(0, 1500 - usage);
-  const isLow = remaining < 100;
-
-  return (
-    <div className={`font-mono text-xs px-2 py-1 rounded border flex items-center gap-1.5 ${isLow ? 'bg-red-500/20 border-red-500/50 text-red-500' : 'bg-zinc-900 border-zinc-800 text-zinc-400'}`} title="免費版 API 每日額度約 1500 次">
-      <Activity className="w-3 h-3" />
-      QUOTA: {remaining}
     </div>
   );
 }
@@ -252,7 +223,6 @@ export default function App() {
                 <Clock className="w-4 h-4" />
                 SYS.TIME: {lastUpdated ? lastUpdated.toLocaleTimeString() : '--:--:--'}
               </p>
-              <QuotaTracker apiKey={customApiKey} />
             </div>
           </div>
 
@@ -499,14 +469,6 @@ export default function App() {
                     autoFocus
                   />
                 </div>
-                {tempApiKey.trim() && (
-                  <div className="text-sm mb-4 flex flex-col gap-1 text-zinc-400">
-                    <div className="text-xs flex items-center gap-2 mt-1">
-                      <span>剩餘額度: ~{Math.max(0, 1500 - getApiUsage(tempApiKey.trim()))} 次</span>
-                      <span className="opacity-70">• 重置: {getNextQuotaResetTime().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
-                    </div>
-                  </div>
-                )}
                 <div className="flex justify-end gap-3">
                   <button 
                     type="button"
