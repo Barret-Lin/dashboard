@@ -36,11 +36,9 @@ const THREAT_COLORS: Record<string, string> = {
   'LOW': 'text-green-500 border-green-500 shadow-[0_0_15px_rgba(34,197,94,0.5)]',
 };
 
-const getScoreStyle = (score: number) => {
-  const base = 'text-[1.5em] font-bold';
-  if (score >= 85) return `${base} text-red-500 bg-red-500/20 px-1.5 py-0.5 rounded`;
-  if (score >= 65) return `${base} text-yellow-500`;
-  return base;
+const getScoreStyle = (level: string) => {
+  const colorClass = THREAT_COLORS[level]?.split(' ')[0] || 'text-zinc-100';
+  return `text-[1.5em] font-bold ${colorClass}`;
 };
 
 function CopyableMarkdownLink({ href, children, ...props }: any) {
@@ -257,10 +255,21 @@ export default function App() {
               {threatLoading ? (
                 <div className="h-6 w-24 bg-zinc-800 animate-pulse rounded"></div>
               ) : (
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-3">
                   <div className={`px-3 py-1 rounded border font-mono font-bold text-sm tracking-widest ${THREAT_COLORS[threatLevel?.level || 'ELEVATED'] || THREAT_COLORS['ELEVATED']}`}>
                     {threatLevel?.level || 'UNKNOWN'}
                   </div>
+                  {threatLevel?.totalScore !== undefined && (
+                    <button
+                      onClick={() => setShowThreatDetails(true)}
+                      className="px-3 py-1 bg-zinc-800/50 hover:bg-zinc-700 text-xs font-mono rounded border border-zinc-700 transition-colors flex items-center gap-2"
+                      title="點擊查看詳細評分"
+                    >
+                      <span className="text-zinc-500">SCORE:</span> 
+                      <span className={`font-bold text-sm ${THREAT_COLORS[threatLevel?.level || 'ELEVATED']?.split(' ')[0] || 'text-zinc-100'}`}>{threatLevel.totalScore}</span>
+                      <Activity className="w-3 h-3 text-zinc-400" />
+                    </button>
+                  )}
                 </div>
               )}
             </div>
@@ -285,16 +294,6 @@ export default function App() {
               )}
             </div>
             <div className="flex items-center gap-2 ml-auto">
-              {threatLevel?.totalScore !== undefined && (
-                <button
-                  onClick={() => setShowThreatDetails(true)}
-                  className="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-xs font-mono rounded-lg border border-zinc-700 transition-colors flex items-center gap-2"
-                >
-                  <span className="hidden sm:inline">SCORE:</span> 
-                  <span className={getScoreStyle(threatLevel.totalScore)}>{threatLevel.totalScore}</span>
-                  <Activity className="w-3 h-3 text-zinc-400" />
-                </button>
-              )}
               <button 
                 onClick={() => setAutoRefresh(!autoRefresh)}
                 className={`p-2 rounded-full transition-colors ${autoRefresh ? 'bg-red-500/20 text-red-500 border border-red-500/50' : 'hover:bg-zinc-800 text-zinc-400'}`}
@@ -558,7 +557,7 @@ export default function App() {
                   <div>
                     <div className="text-sm text-zinc-500 font-mono mb-1">TOTAL SCORE</div>
                     <div className="text-4xl font-bold text-zinc-100">
-                      <span className={getScoreStyle(threatLevel.totalScore)}>{threatLevel.totalScore}</span> <span className="text-lg text-zinc-500 font-normal">/ 100</span>
+                      <span className={getScoreStyle(threatLevel.level)}>{threatLevel.totalScore}</span> <span className="text-lg text-zinc-500 font-normal">/ 100</span>
                     </div>
                   </div>
                   <div className="text-right">
@@ -566,6 +565,17 @@ export default function App() {
                     <div className={`text-2xl font-bold ${THREAT_COLORS[threatLevel.level] || 'text-zinc-100'}`}>
                       {threatLevel.level}
                     </div>
+                  </div>
+                </div>
+
+                <div className="bg-[#111] p-3 tech-border text-xs font-mono text-zinc-400 flex flex-col md:flex-row gap-2 md:gap-4 justify-between items-start md:items-center">
+                  <span className="text-zinc-500 uppercase tracking-wider">等級與分數對照表 (Level & Score Mapping):</span>
+                  <div className="flex flex-wrap gap-x-4 gap-y-2">
+                    <span><span className="text-green-500 font-bold">LOW</span> (0-20)</span>
+                    <span><span className="text-blue-500 font-bold">GUARDED</span> (21-40)</span>
+                    <span><span className="text-yellow-500 font-bold">ELEVATED</span> (41-60)</span>
+                    <span><span className="text-orange-500 font-bold">HIGH</span> (61-80)</span>
+                    <span><span className="text-red-500 font-bold">CRITICAL</span> (81-100)</span>
                   </div>
                 </div>
 
