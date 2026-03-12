@@ -24,6 +24,8 @@ export interface IntelligenceData {
   text: string;
   sources: { title: string; uri: string }[];
   isRateLimited?: boolean;
+  isInvalidKey?: boolean;
+  isMissingKey?: boolean;
 }
 
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
@@ -57,7 +59,7 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
     return {
       text: `⚠️ **需要 API 金鑰**\n\n請在設定中輸入您的 Google Gemini API 金鑰以取得即時戰情。`,
       sources: [],
-      isRateLimited: true
+      isMissingKey: true
     };
   }
 
@@ -156,7 +158,7 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
       return {
         text: `⚠️ **API 金鑰無效**\n\n您輸入的 API 金鑰無效，請重新輸入。\n\n**原始錯誤訊息：**\n\`${lastError.message}\``,
         sources: [],
-        isRateLimited: true // Reuse this flag to trigger the modal
+        isInvalidKey: true
       };
     }
   }
@@ -175,6 +177,8 @@ export interface ThreatLevelData {
   explanation?: string;
   sources?: { title: string; uri: string }[];
   isRateLimited?: boolean;
+  isInvalidKey?: boolean;
+  isMissingKey?: boolean;
 }
 
 export async function fetchOverallThreatLevel(customApiKey?: string, forceRefresh = false): Promise<ThreatLevelData> {
@@ -182,7 +186,7 @@ export async function fetchOverallThreatLevel(customApiKey?: string, forceRefres
     return { 
       level: 'UNKNOWN', 
       summary: `請輸入自訂 API Key 以取得威脅等級。`, 
-      isRateLimited: true 
+      isMissingKey: true 
     };
   }
 
@@ -298,7 +302,7 @@ export async function fetchOverallThreatLevel(customApiKey?: string, forceRefres
     return { 
       level: 'UNKNOWN', 
       summary: `API 金鑰無效，請重新輸入。`, 
-      isRateLimited: true 
+      isInvalidKey: true 
     };
   }
 
