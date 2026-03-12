@@ -119,17 +119,25 @@ export default function App() {
   const [showThreatDetails, setShowThreatDetails] = useState(false);
 
   const [customApiKey, setCustomApiKey] = useState(() => {
-    return sessionStorage.getItem('customApiKey') || '';
+    try {
+      return sessionStorage.getItem('customApiKey') || '';
+    } catch (e) {
+      return '';
+    }
   });
   const [tempApiKey, setTempApiKey] = useState('');
   const [showApiKeyInput, setShowApiKeyInput] = useState(false);
   const [apiKeyModalReason, setApiKeyModalReason] = useState<'RATE_LIMIT' | 'MANUAL'>('RATE_LIMIT');
 
   useEffect(() => {
-    if (customApiKey) {
-      sessionStorage.setItem('customApiKey', customApiKey);
-    } else {
-      sessionStorage.removeItem('customApiKey');
+    try {
+      if (customApiKey) {
+        sessionStorage.setItem('customApiKey', customApiKey);
+      } else {
+        sessionStorage.removeItem('customApiKey');
+      }
+    } catch (e) {
+      // ignore
     }
   }, [customApiKey]);
 
