@@ -4,7 +4,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import { Crosshair, TrendingDown, Globe, RefreshCw, AlertTriangle, ExternalLink, Radar, Clock, Flame, Key, Lock, Unlock, Copy, Check, Activity } from 'lucide-react';
+import { Crosshair, TrendingDown, Globe, RefreshCw, AlertTriangle, ExternalLink, Radar, Clock, Flame, Key, Lock, Unlock, Copy, Check, Activity, Eye, EyeOff } from 'lucide-react';
 import Markdown from 'react-markdown';
 import { motion, AnimatePresence } from 'motion/react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
@@ -125,6 +125,7 @@ export default function App() {
   });
   const [tempApiKey, setTempApiKey] = useState('');
   const [showApiKeyInput, setShowApiKeyInput] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const [apiKeyModalReason, setApiKeyModalReason] = useState<'RATE_LIMIT' | 'MANUAL' | 'INVALID' | 'MISSING'>('MISSING');
 
   useEffect(() => {
@@ -238,7 +239,7 @@ export default function App() {
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
                 <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
               </div>
-              <h1 className="text-3xl font-bold tracking-tight text-zinc-100 uppercase font-mono">台海戰情即時情報網 <span className="text-xs text-zinc-600 font-mono ml-2">v1.0.3</span></h1>
+              <h1 className="text-3xl font-bold tracking-tight text-zinc-100 uppercase font-mono">台海戰情即時情報網 <span className="text-xs text-zinc-600 font-mono ml-2">v1.0.4</span></h1>
             </div>
             <div className="flex items-center gap-4">
               <p className="text-zinc-500 font-mono text-sm flex items-center gap-2">
@@ -478,7 +479,8 @@ export default function App() {
               </p>
               <form onSubmit={(e) => {
                 e.preventDefault();
-                const cleanKey = tempApiKey.replace(/[^a-zA-Z0-9_-]/g, '');
+                // Instead of aggressive regex, just remove all whitespace and BOM characters
+                const cleanKey = tempApiKey.replace(/[\s\uFEFF\xA0]+/g, '');
                 if (cleanKey) {
                   setCustomApiKey(cleanKey);
                   setShowApiKeyInput(false);
@@ -489,15 +491,22 @@ export default function App() {
                   setTimeout(() => handleRefreshAll(''), 100);
                 }
               }}>
-                <div className="flex items-center gap-2 mb-4">
+                <div className="relative flex items-center mb-4">
                   <input 
-                    type="password" 
+                    type={showPassword ? "text" : "password"} 
                     value={tempApiKey}
                     onChange={(e) => { setTempApiKey(e.target.value); }}
                     placeholder="AIzaSy..."
-                    className={`flex-1 w-full bg-black border border-zinc-700 rounded-lg px-4 py-2 text-zinc-200 focus:outline-none focus:ring-1 font-mono text-sm ${apiKeyModalReason === 'RATE_LIMIT' || apiKeyModalReason === 'INVALID' ? 'focus:border-red-500 focus:ring-red-500' : 'focus:border-blue-500 focus:ring-blue-500'}`}
+                    className={`w-full bg-black border border-zinc-700 rounded-lg px-4 py-2 pr-10 text-zinc-200 focus:outline-none focus:ring-1 font-mono text-sm ${apiKeyModalReason === 'RATE_LIMIT' || apiKeyModalReason === 'INVALID' ? 'focus:border-red-500 focus:ring-red-500' : 'focus:border-blue-500 focus:ring-blue-500'}`}
                     autoFocus
                   />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 text-zinc-500 hover:text-zinc-300 transition-colors"
+                  >
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
                 </div>
                 <div className="flex justify-end gap-3">
                   <button 
