@@ -26,6 +26,7 @@ export interface IntelligenceData {
   isRateLimited?: boolean;
   isInvalidKey?: boolean;
   isMissingKey?: boolean;
+  timestamp?: number;
 }
 
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
@@ -36,7 +37,7 @@ function getLocalCache(key: string) {
     if (cached) {
       const parsed = JSON.parse(cached);
       if (Date.now() - parsed.timestamp < CACHE_TTL) {
-        return parsed.data;
+        return { ...parsed.data, timestamp: parsed.timestamp };
       }
       localStorage.removeItem(key);
     }
@@ -73,9 +74,11 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
     }
   }
 
+  const now = new Date().toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' });
   let prompt = '';
   if (categoryId === 'weekly_threat') {
-    prompt = `請搜尋今日（最近 24 小時內），關於中國對台灣的最新動態與新聞。
+    prompt = `現在時間是台灣時間 ${now}。
+請搜尋今日（最近 24 小時內），關於中國對台灣的最新動態與新聞。
 請特別包含「國外主流媒體（如 CNN, BBC, Reuters, Bloomberg 等）」以及「社群網路（如 X/Twitter, Telegram, Reddit 等）」上的相關討論與情報。
 請以專業的軍事與地緣政治情報分析師的角度，撰寫一份即時戰情摘要（繁體中文）。
 請使用 Markdown 格式排版，包含以下內容：
@@ -85,7 +88,8 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
 
 請確保資訊是最新的，並基於真實的新聞報導與社群動態。`;
   } else {
-    prompt = `請搜尋今日（最近 24 小時內），關於中國對台灣的「${categoryQuery}」最新動態與新聞。
+    prompt = `現在時間是台灣時間 ${now}。
+請搜尋今日（最近 24 小時內），關於中國對台灣的「${categoryQuery}」最新動態與新聞。
 請特別包含「國外主流媒體（如 CNN, BBC, Reuters, Bloomberg 等）」以及「社群網路（如 X/Twitter, Telegram, Reddit 等）」上的相關討論與情報。
 請以專業的軍事與地緣政治情報分析師的角度，撰寫一份即時戰情摘要（繁體中文）。
 請使用 Markdown 格式排版，包含以下內容：
@@ -126,6 +130,7 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
     const result = {
       text,
       sources: uniqueSources,
+      timestamp: Date.now(),
     };
     setLocalCache(cacheKey, result);
     return result;
@@ -180,6 +185,7 @@ export interface ThreatLevelData {
   isRateLimited?: boolean;
   isInvalidKey?: boolean;
   isMissingKey?: boolean;
+  timestamp?: number;
 }
 
 export async function fetchOverallThreatLevel(customApiKey?: string, forceRefresh = false): Promise<ThreatLevelData> {
@@ -201,7 +207,9 @@ export async function fetchOverallThreatLevel(customApiKey?: string, forceRefres
     }
   }
 
-  const prompt = `請搜尋今日關於台海局勢的新聞（包含國內外媒體及社群網路），評估目前的整體威脅等級。
+  const now = new Date().toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' });
+  const prompt = `現在時間是台灣時間 ${now}。
+請搜尋今日關於台海局勢的新聞（包含國內外媒體及社群網路），評估目前的整體威脅等級。
 請依據以下四個面向給予 0~100 的威脅評分，並套用權重計算總分 (Total Score)：
 1. 軍事動態 (Military) - 權重 40%
 2. 經濟封鎖 (Economic) - 權重 25%
@@ -276,6 +284,7 @@ export async function fetchOverallThreatLevel(customApiKey?: string, forceRefres
     
     const uniqueSources = Array.from(new Map(sources.map((s: any) => [s.uri, s])).values()) as { title: string; uri: string }[];
     data.sources = uniqueSources;
+    data.timestamp = Date.now();
     
     setLocalCache(cacheKey, data);
     return data;
