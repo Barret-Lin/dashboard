@@ -4,11 +4,11 @@
  */
 
 import { useState, useEffect } from 'react';
-import { Crosshair, TrendingDown, Globe, RefreshCw, AlertTriangle, ExternalLink, Activity, Radar, Clock, Flame, Key, Trash2, Plus, Lock, Unlock, Copy, Check } from 'lucide-react';
+import { Crosshair, TrendingDown, Globe, RefreshCw, AlertTriangle, ExternalLink, Radar, Clock, Flame, Key, Lock, Unlock, Copy, Check } from 'lucide-react';
 import Markdown from 'react-markdown';
 import { motion, AnimatePresence } from 'motion/react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
-import { fetchIntelligence, fetchOverallThreatLevel, IntelligenceData, checkApiKeyStatus, getAllKeysStatus, KeyStatus, ThreatLevelData, getFallbackKeys, saveFallbackKeys, keyUsageStats, getRpmCount } from './services/intelligenceService';
+import { fetchIntelligence, fetchOverallThreatLevel, IntelligenceData, ThreatLevelData, getApiUsage } from './services/intelligenceService';
 
 const CATEGORIES = [
   { id: 'weekly_threat', name: '本日最新威脅情資', icon: Flame, query: '綜合威脅情資、重大事件總結' },
@@ -107,50 +107,32 @@ function CopyableSourceCard({ source }: { source: { title: string; uri: string }
   );
 }
 
-function RpmStatus() {
-  const [rpmCount, setRpmCount] = useState(0);
+function QuotaTracker({ apiKey }: { apiKey: string }) {
+  const [usage, setUsage] = useState(() => getApiUsage(apiKey));
 
   useEffect(() => {
-    const interval = setInterval(() => {
-      setRpmCount(getRpmCount());
-    }, 1000);
-    return () => clearInterval(interval);
-  }, []);
+    setUsage(getApiUsage(apiKey));
+    
+    const handleUsageUpdate = (e: any) => {
+      if (e.detail?.apiKey === apiKey) {
+        setUsage(getApiUsage(apiKey));
+      }
+    };
+    
+    window.addEventListener('api-usage-updated', handleUsageUpdate);
+    return () => window.removeEventListener('api-usage-updated', handleUsageUpdate);
+  }, [apiKey]);
+
+  if (!apiKey) return null;
+
+  const remaining = Math.max(0, 1500 - usage);
+  const isLow = remaining < 100;
 
   return (
-    <div className={`font-mono text-xs px-2 py-0.5 rounded border flex items-center gap-1.5 ${rpmCount >= 15 ? 'bg-red-500/20 border-red-500/50 text-red-500' : 'bg-zinc-900 border-zinc-800 text-zinc-400'}`}>
+    <div className={`font-mono text-xs px-2 py-1 rounded border flex items-center gap-1.5 ${isLow ? 'bg-red-500/20 border-red-500/50 text-red-500' : 'bg-zinc-900 border-zinc-800 text-zinc-400'}`} title="免費版 API 每日額度約 1500 次">
       <Activity className="w-3 h-3" />
-      RPM: {rpmCount}/15
+      QUOTA: {remaining}
     </div>
-  );
-}
-
-function RpmWarning() {
-  const [rpmCount, setRpmCount] = useState(0);
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setRpmCount(getRpmCount());
-    }, 1000);
-    return () => clearInterval(interval);
-  }, []);
-
-  return (
-    <AnimatePresence>
-      {rpmCount >= 15 && (
-        <motion.div
-          initial={{ opacity: 0, y: -10, height: 0 }}
-          animate={{ opacity: 1, y: 0, height: 'auto' }}
-          exit={{ opacity: 0, y: -10, height: 0 }}
-          className="overflow-hidden"
-        >
-          <div className="bg-red-500/10 border border-red-500/50 text-red-500 px-4 py-3 rounded-lg font-mono text-sm flex items-center gap-3 shadow-[0_0_15px_rgba(239,68,68,0.2)]">
-            <AlertTriangle className="w-5 h-5 animate-pulse" />
-            <span><strong>每分鐘頻率限制 (RPM)：</strong>每分鐘最多 15 次，請稍後再試。</span>
-          </div>
-        </motion.div>
-      )}
-    </AnimatePresence>
   );
 }
 
@@ -165,47 +147,20 @@ export default function App() {
   const [autoRefresh, setAutoRefresh] = useState(false);
   const [showThreatDetails, setShowThreatDetails] = useState(false);
 
-  const [customApiKey, setCustomApiKey] = useState('');
+  const [customApiKey, setCustomApiKey] = useState(() => {
+    return sessionStorage.getItem('customApiKey') || '';
+  });
   const [tempApiKey, setTempApiKey] = useState('');
   const [showApiKeyInput, setShowApiKeyInput] = useState(false);
   const [apiKeyModalReason, setApiKeyModalReason] = useState<'RATE_LIMIT' | 'MANUAL'>('RATE_LIMIT');
 
-  const [showKeyStatusModal, setShowKeyStatusModal] = useState(false);
-  const [keyStatuses, setKeyStatuses] = useState<KeyStatus[]>([]);
-  const [checkingKeys, setCheckingKeys] = useState(false);
-  const [tempKeyStatus, setTempKeyStatus] = useState<'VALID' | 'RATE_LIMITED' | 'INVALID' | 'UNKNOWN' | null>(null);
-  const [testingTempKey, setTestingTempKey] = useState(false);
-
-  const [isAdminMode, setIsAdminMode] = useState(false);
-  const [showAdminLogin, setShowAdminLogin] = useState(false);
-  const [adminPassword, setAdminPassword] = useState('');
-  const [newFallbackKey, setNewFallbackKey] = useState('');
-
-  const handleCheckAllKeys = async () => {
-    setCheckingKeys(true);
-    try {
-      const statuses = await getAllKeysStatus();
-      setKeyStatuses(statuses);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setCheckingKeys(false);
+  useEffect(() => {
+    if (customApiKey) {
+      sessionStorage.setItem('customApiKey', customApiKey);
+    } else {
+      sessionStorage.removeItem('customApiKey');
     }
-  };
-
-  const handleTestTempKey = async () => {
-    if (!tempApiKey.trim()) return;
-    setTestingTempKey(true);
-    setTempKeyStatus(null);
-    try {
-      const status = await checkApiKeyStatus(tempApiKey.trim());
-      setTempKeyStatus(status);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setTestingTempKey(false);
-    }
-  };
+  }, [customApiKey]);
 
   const loadThreatLevel = async (keyOverride?: string, force = false) => {
     setThreatLoading(true);
@@ -297,7 +252,7 @@ export default function App() {
                 <Clock className="w-4 h-4" />
                 SYS.TIME: {lastUpdated ? lastUpdated.toLocaleTimeString() : '--:--:--'}
               </p>
-              <RpmStatus />
+              <QuotaTracker apiKey={customApiKey} />
             </div>
           </div>
 
@@ -372,21 +327,9 @@ export default function App() {
               >
                 <Key className="w-5 h-5 text-zinc-400" />
               </button>
-              <button 
-                onClick={() => {
-                  setShowKeyStatusModal(true);
-                  handleCheckAllKeys();
-                }}
-                className="p-2 hover:bg-zinc-800 rounded-full transition-colors"
-                title="API Key Status"
-              >
-                <Activity className="w-5 h-5 text-zinc-400" />
-              </button>
             </div>
           </div>
         </header>
-
-        <RpmWarning />
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           
@@ -531,8 +474,8 @@ export default function App() {
               </div>
               <p className="text-zinc-400 text-sm mb-6">
                 {apiKeyModalReason === 'RATE_LIMIT' 
-                  ? '內建的 API 金鑰已超出配額限制。請輸入您自己的 Gemini API 金鑰以繼續使用。此金鑰僅會保存在您當前的瀏覽器記憶體中，離開網頁後將自動清除。'
-                  : '請輸入您自己的 Gemini API 金鑰。此金鑰僅會保存在您當前的瀏覽器記憶體中，離開網頁後將自動清除。設定後將優先使用您的金鑰。'}
+                  ? '您輸入的 API 金鑰已超出配額限制。請輸入新的 Gemini API 金鑰以繼續使用。此金鑰僅會保存在您當前的瀏覽器記憶體中。'
+                  : '請輸入您自己的 Gemini API 金鑰。此金鑰僅會保存在您當前的瀏覽器記憶體中。'}
               </p>
               <form onSubmit={(e) => {
                 e.preventDefault();
@@ -550,29 +493,18 @@ export default function App() {
                   <input 
                     type="password" 
                     value={tempApiKey}
-                    onChange={(e) => { setTempApiKey(e.target.value); setTempKeyStatus(null); }}
+                    onChange={(e) => { setTempApiKey(e.target.value); }}
                     placeholder="AIzaSy..."
                     className={`flex-1 w-full bg-black border border-zinc-700 rounded-lg px-4 py-2 text-zinc-200 focus:outline-none focus:ring-1 font-mono text-sm ${apiKeyModalReason === 'RATE_LIMIT' ? 'focus:border-red-500 focus:ring-red-500' : 'focus:border-blue-500 focus:ring-blue-500'}`}
                     autoFocus
                   />
-                  <button
-                    type="button"
-                    onClick={handleTestTempKey}
-                    disabled={!tempApiKey.trim() || testingTempKey}
-                    className="px-4 py-2 rounded-lg text-sm font-medium bg-zinc-800 text-zinc-300 hover:bg-zinc-700 transition-colors disabled:opacity-50 whitespace-nowrap"
-                  >
-                    {testingTempKey ? '測試中...' : '測試金鑰'}
-                  </button>
                 </div>
-                {tempKeyStatus && (
-                  <div className={`text-sm mb-4 flex flex-col gap-1 ${tempKeyStatus === 'VALID' ? 'text-green-500' : tempKeyStatus === 'RATE_LIMITED' ? 'text-yellow-500' : 'text-red-500'}`}>
-                    <div>狀態: {tempKeyStatus === 'VALID' ? '🟢 正常可用' : tempKeyStatus === 'RATE_LIMITED' ? '🟡 頻率受限 (Rate Limited)' : '🔴 無效金鑰'}</div>
-                    {(tempKeyStatus === 'VALID' || tempKeyStatus === 'RATE_LIMITED') && keyUsageStats[tempApiKey.trim()] && (
-                      <div className="text-xs text-blue-400/80 flex items-center gap-2 mt-1">
-                        <span>剩餘額度: ~{Math.max(0, 1500 - (keyUsageStats[tempApiKey.trim()]?.requestsToday || 0))} 次</span>
-                        <span className="opacity-70">• 重置: {getNextQuotaResetTime().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
-                      </div>
-                    )}
+                {tempApiKey.trim() && (
+                  <div className="text-sm mb-4 flex flex-col gap-1 text-zinc-400">
+                    <div className="text-xs flex items-center gap-2 mt-1">
+                      <span>剩餘額度: ~{Math.max(0, 1500 - getApiUsage(tempApiKey.trim()))} 次</span>
+                      <span className="opacity-70">• 重置: {getNextQuotaResetTime().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                    </div>
                   </div>
                 )}
                 <div className="flex justify-end gap-3">
@@ -596,195 +528,6 @@ export default function App() {
                   </button>
                 </div>
               </form>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Key Status Modal */}
-      <AnimatePresence>
-        {showKeyStatusModal && (
-          <motion.div 
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4"
-          >
-            <motion.div 
-              initial={{ scale: 0.95, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.95, opacity: 0 }}
-              className="bg-[#0a0a0a] tech-border p-6 max-w-md w-full shadow-2xl"
-            >
-              <div className="flex items-center justify-between mb-6">
-                <div className="flex items-center gap-3 text-zinc-100">
-                  <Activity className="w-6 h-6" />
-                  <h2 className="text-lg font-bold">內建 API 金鑰狀態</h2>
-                </div>
-                <div className="flex items-center gap-2">
-                  <button 
-                    onClick={() => {
-                      if (isAdminMode) {
-                        setIsAdminMode(false);
-                      } else {
-                        setShowAdminLogin(!showAdminLogin);
-                      }
-                    }}
-                    className={`p-2 rounded-full transition-colors ${isAdminMode ? 'bg-blue-500/20 text-blue-400' : 'hover:bg-zinc-800 text-zinc-400'}`}
-                    title="管理員模式"
-                  >
-                    {isAdminMode ? <Unlock className="w-4 h-4" /> : <Lock className="w-4 h-4" />}
-                  </button>
-                  <button 
-                    onClick={handleCheckAllKeys}
-                    disabled={checkingKeys}
-                    className="p-2 hover:bg-zinc-800 rounded-full transition-colors disabled:opacity-50"
-                  >
-                    <RefreshCw className={`w-4 h-4 text-zinc-400 ${checkingKeys ? 'animate-spin' : ''}`} />
-                  </button>
-                </div>
-              </div>
-
-              {showAdminLogin && !isAdminMode && (
-                <div className="mb-4 flex gap-2">
-                  <input 
-                    type="password" 
-                    placeholder="輸入管理員密碼" 
-                    value={adminPassword}
-                    onChange={e => setAdminPassword(e.target.value)}
-                    className="flex-1 bg-black border border-zinc-700 rounded px-3 py-1.5 text-sm text-zinc-200 focus:outline-none focus:border-blue-500"
-                  />
-                  <button 
-                    onClick={() => {
-                      if (adminPassword === 'hero3102') {
-                        setIsAdminMode(true);
-                        setShowAdminLogin(false);
-                        setAdminPassword('');
-                      } else {
-                        alert('密碼錯誤');
-                      }
-                    }}
-                    className="px-3 py-1.5 bg-blue-500/20 text-blue-400 rounded text-sm hover:bg-blue-500/30 transition-colors"
-                  >
-                    解鎖
-                  </button>
-                </div>
-              )}
-
-              <div className="mb-4 text-xs text-zinc-400 font-mono bg-black/30 p-3 rounded border border-zinc-800 flex flex-col gap-2">
-                {autoRefresh && lastUpdated && (
-                  <div className="flex items-center gap-2">
-                    <Clock className="w-3 h-3 text-zinc-500" />
-                    下次自動更新時間: <span className="text-zinc-300">{new Date(lastUpdated.getTime() + 6 * 60 * 60 * 1000).toLocaleTimeString()}</span>
-                  </div>
-                )}
-                <div className="flex items-center gap-2">
-                  <RefreshCw className="w-3 h-3 text-zinc-500" />
-                  API 配額重置時間: <span className="text-zinc-300">{getNextQuotaResetTime().toLocaleString()} (當地時間)</span>
-                </div>
-              </div>
-              
-              <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-2">
-                {checkingKeys && keyStatuses.length === 0 ? (
-                  <div className="text-center text-zinc-500 py-4 text-sm">檢查中...</div>
-                ) : (
-                  keyStatuses.map((ks, idx) => (
-                    <div key={idx} className="flex items-center justify-between p-3 rounded bg-black/50 border border-zinc-800">
-                      <div className="font-mono text-xs text-zinc-400">
-                        {ks.key.substring(0, 10)}...{ks.key.substring(ks.key.length - 4)}
-                        {ks.usage && (
-                          <div className="mt-1.5 text-[10px] text-zinc-500 font-sans flex flex-col gap-1">
-                            <div className="flex items-center gap-2">
-                              <span className="text-green-500/70">✓ {ks.usage.success}</span>
-                              <span className="text-red-500/70">✗ {ks.usage.errors}</span>
-                              {ks.usage.lastUsed && (
-                                <span className="opacity-70">
-                                  • {ks.usage.lastUsed.toLocaleTimeString()}
-                                </span>
-                              )}
-                            </div>
-                            {(ks.status === 'VALID' || ks.status === 'RATE_LIMITED') && (
-                              <div className="flex items-center gap-2 text-blue-400/80">
-                                <span>剩餘額度: ~{Math.max(0, 1500 - (ks.usage.requestsToday || 0))} 次</span>
-                                <span className="opacity-70">• 重置: {getNextQuotaResetTime().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
-                              </div>
-                            )}
-                            {ks.status === 'RATE_LIMITED' && (
-                              <div className="text-[10px] text-yellow-500/80 mt-0.5">
-                                * 可能觸發每分鐘 15 次限制，請稍後再試
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-3">
-                        <div className={`text-xs font-bold px-2 py-1 rounded ${
-                          ks.status === 'VALID' ? 'bg-green-500/10 text-green-500 border border-green-500/20' : 
-                          ks.status === 'RATE_LIMITED' ? 'bg-yellow-500/10 text-yellow-500 border border-yellow-500/20' : 
-                          'bg-red-500/10 text-red-500 border border-red-500/20'
-                        }`}>
-                          {ks.status === 'VALID' ? '🟢 正常' : ks.status === 'RATE_LIMITED' ? '🟡 受限' : '🔴 無效'}
-                        </div>
-                        {isAdminMode && (
-                          <button 
-                            onClick={() => {
-                              if (confirm('確定要刪除此金鑰嗎？')) {
-                                const currentKeys = getFallbackKeys();
-                                const newKeys = currentKeys.filter(k => k !== ks.key);
-                                saveFallbackKeys(newKeys);
-                                handleCheckAllKeys();
-                              }
-                            }}
-                            className="p-1.5 text-red-500 hover:bg-red-500/20 rounded transition-colors"
-                            title="刪除金鑰"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-
-              {isAdminMode && (
-                <div className="mt-4 pt-4 border-t border-zinc-800 flex gap-2">
-                  <input 
-                    type="text" 
-                    placeholder="新增 API 金鑰 (AIzaSy...)" 
-                    value={newFallbackKey}
-                    onChange={e => setNewFallbackKey(e.target.value)}
-                    className="flex-1 bg-black border border-zinc-700 rounded px-3 py-1.5 text-sm text-zinc-200 focus:outline-none focus:border-blue-500 font-mono"
-                  />
-                  <button 
-                    onClick={() => {
-                      if (newFallbackKey.trim()) {
-                        const currentKeys = getFallbackKeys();
-                        if (!currentKeys.includes(newFallbackKey.trim())) {
-                          saveFallbackKeys([...currentKeys, newFallbackKey.trim()]);
-                          setNewFallbackKey('');
-                          handleCheckAllKeys();
-                        } else {
-                          alert('此金鑰已存在');
-                        }
-                      }
-                    }}
-                    disabled={!newFallbackKey.trim()}
-                    className="px-3 py-1.5 bg-green-500/20 text-green-500 rounded text-sm hover:bg-green-500/30 transition-colors flex items-center gap-1 disabled:opacity-50"
-                  >
-                    <Plus className="w-4 h-4" /> 新增
-                  </button>
-                </div>
-              )}
-
-              <div className="mt-6 flex justify-end">
-                <button 
-                  onClick={() => setShowKeyStatusModal(false)}
-                  className="px-4 py-2 rounded-lg text-sm font-medium bg-zinc-800 text-zinc-300 hover:bg-zinc-700 transition-colors"
-                >
-                  關閉
-                </button>
-              </div>
             </motion.div>
           </motion.div>
         )}
