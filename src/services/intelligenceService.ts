@@ -1,6 +1,6 @@
 import { GoogleGenAI, Type } from '@google/genai';
 
-const RPM_LIMIT = 15;
+export const RPM_LIMIT = 14;
 const RPM_WINDOW = 60000; // 60 seconds
 
 class ApiRateManager {
@@ -62,6 +62,12 @@ class ApiRateManager {
 
   public async waitForSlot() {
     while (true) {
+      try {
+        const stored = localStorage.getItem('api_call_history');
+        if (stored) {
+          this.callTimestamps = JSON.parse(stored);
+        }
+      } catch (e) {}
       this.cleanHistory();
       if (this.callTimestamps.length < RPM_LIMIT) {
         break;
@@ -92,8 +98,8 @@ async function executeWithLock<T>(fn: () => Promise<T>): Promise<T> {
     await apiRateManager.recordCall();
     return await fn();
   } finally {
-    // Add a 500ms delay between requests to prevent concurrency/burst rate limits
-    setTimeout(releaseLock, 500);
+    // Add a 2000ms delay between requests to prevent concurrency/burst rate limits
+    setTimeout(releaseLock, 2000);
   }
 }
 
@@ -101,6 +107,7 @@ export interface IntelligenceData {
   text: string;
   sources: { title: string; uri: string }[];
   isRateLimited?: boolean;
+  isDailyLimit?: boolean;
   isInvalidKey?: boolean;
   isMissingKey?: boolean;
   timestamp?: number;
@@ -152,10 +159,12 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
   }
 
   const now = new Date().toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' });
+  const todayStr = new Date().toISOString().split('T')[0];
   let prompt = '';
   if (categoryId === 'weekly_threat') {
     prompt = `現在時間是台灣時間 ${now}。
-請搜尋今日（最近 24 小時內），關於中國對台灣的最新動態與新聞。
+請嚴格搜尋「今日（${todayStr}）或過去 24 小時內」，關於中國對台灣的最新動態與新聞。
+【重要警告】：請務必過濾掉舊新聞，只採用發布日期為最近 24 小時內的資料。如果沒有最新消息，請明確說明「今日無重大事件」。
 請特別包含「國外主流媒體（如 CNN, BBC, Reuters, Bloomberg 等）」以及「社群網路（如 X/Twitter, Telegram, Reddit 等）」上的相關討論與情報。
 請以專業的軍事與地緣政治情報分析師的角度，撰寫一份即時戰情摘要（繁體中文）。
 請使用 Markdown 格式排版，包含以下內容：
@@ -166,7 +175,8 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
 請確保資訊是最新的，並基於真實的新聞報導與社群動態。`;
   } else {
     prompt = `現在時間是台灣時間 ${now}。
-請搜尋今日（最近 24 小時內），關於中國對台灣的「${categoryQuery}」最新動態與新聞。
+請嚴格搜尋「今日（${todayStr}）或過去 24 小時內」，關於中國對台灣的「${categoryQuery}」最新動態與新聞。
+【重要警告】：請務必過濾掉舊新聞，只採用發布日期為最近 24 小時內的資料。如果沒有最新消息，請明確說明「今日無重大事件」。
 請特別包含「國外主流媒體（如 CNN, BBC, Reuters, Bloomberg 等）」以及「社群網路（如 X/Twitter, Telegram, Reddit 等）」上的相關討論與情報。
 請以專業的軍事與地緣政治情報分析師的角度，撰寫一份即時戰情摘要（繁體中文）。
 請使用 Markdown 格式排版，包含以下內容：
@@ -223,13 +233,14 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
 
   let errorMessage = "無法取得即時情報，請稍後再試。可能是因為 API 限制或網路問題。";
   if (lastError?.message?.includes('429') || lastError?.status === 429 || lastError?.message?.includes('quota') || lastError?.message?.includes('Resource has been exhausted')) {
-    const isSearchQuota = lastError?.message?.includes('quota') || lastError?.message?.includes('Resource has been exhausted');
+    const isSearchQuota = lastError?.message?.includes('quota') || lastError?.message?.includes('Resource has been exhausted') || lastError?.message?.includes('per day');
     const reasonText = isSearchQuota ? "（包含每日總額度或 Google 搜尋工具配額已耗盡）" : "（免費版 API 有嚴格的每分鐘頻率限制）";
     
     return {
       text: `⚠️ **您的 API 金鑰請求次數已達上限 (Quota Exceeded)**\n\n您輸入的 API 金鑰已超出配額限制${reasonText}。請注意，Google 的頻率限制是跨網頁與應用程式計算的，請稍後再試，或更換其他金鑰。\n\n**原始錯誤訊息：**\n\`${lastError?.message || 'Unknown Error'}\``,
       sources: [],
-      isRateLimited: true
+      isRateLimited: true,
+      isDailyLimit: isSearchQuota
     };
   }
 
@@ -260,6 +271,7 @@ export interface ThreatLevelData {
   explanation?: string;
   sources?: { title: string; uri: string }[];
   isRateLimited?: boolean;
+  isDailyLimit?: boolean;
   isInvalidKey?: boolean;
   isMissingKey?: boolean;
   timestamp?: number;
@@ -285,8 +297,10 @@ export async function fetchOverallThreatLevel(customApiKey?: string, forceRefres
   }
 
   const now = new Date().toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' });
+  const todayStr = new Date().toISOString().split('T')[0];
   const prompt = `現在時間是台灣時間 ${now}。
-請搜尋今日關於台海局勢的新聞（包含國內外媒體及社群網路），評估目前的整體威脅等級。
+請嚴格搜尋「今日（${todayStr}）或過去 24 小時內」關於台海局勢的新聞（包含國內外媒體及社群網路），評估目前的整體威脅等級。
+【重要警告】：請務必過濾掉舊新聞，只採用發布日期為最近 24 小時內的資料。
 請依據以下四個面向給予 0~100 的威脅評分，並套用權重計算總分 (Total Score)：
 1. 軍事動態 (Military) - 權重 40%
 2. 經濟封鎖 (Economic) - 權重 25%
@@ -376,13 +390,14 @@ export async function fetchOverallThreatLevel(customApiKey?: string, forceRefres
   }
 
   if (lastError?.message?.includes('429') || lastError?.status === 429 || lastError?.message?.includes('quota') || lastError?.message?.includes('Resource has been exhausted')) {
-    const isSearchQuota = lastError?.message?.includes('quota') || lastError?.message?.includes('Resource has been exhausted');
+    const isSearchQuota = lastError?.message?.includes('quota') || lastError?.message?.includes('Resource has been exhausted') || lastError?.message?.includes('per day');
     const reasonText = isSearchQuota ? "（每日總額度或 Google 搜尋工具配額已耗盡）" : "（每分鐘頻率限制）";
     
     return { 
       level: 'UNKNOWN', 
       summary: `您的 API 金鑰已達請求上限${reasonText}。請稍後再試。`, 
-      isRateLimited: true 
+      isRateLimited: true,
+      isDailyLimit: isSearchQuota
     };
   }
 

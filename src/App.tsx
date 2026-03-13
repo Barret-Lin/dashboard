@@ -126,7 +126,7 @@ export default function App() {
   const [tempApiKey, setTempApiKey] = useState('');
   const [showApiKeyInput, setShowApiKeyInput] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-  const [apiKeyModalReason, setApiKeyModalReason] = useState<'RATE_LIMIT' | 'MANUAL' | 'INVALID' | 'MISSING'>('MISSING');
+  const [apiKeyModalReason, setApiKeyModalReason] = useState<'RATE_LIMIT' | 'DAILY_LIMIT' | 'MANUAL' | 'INVALID' | 'MISSING'>('MISSING');
   const [apiCallCount, setApiCallCount] = useState(0);
 
   useEffect(() => {
@@ -153,7 +153,7 @@ export default function App() {
     try {
       const data = await fetchOverallThreatLevel(keyOverride ?? customApiKey, force);
       if (data.isRateLimited) {
-        setApiKeyModalReason('RATE_LIMIT');
+        setApiKeyModalReason(data.isDailyLimit ? 'DAILY_LIMIT' : 'RATE_LIMIT');
         setShowApiKeyInput(true);
         setThreatLevel(prev => prev ? prev : data);
       } else if (data.isInvalidKey) {
@@ -186,7 +186,7 @@ export default function App() {
       if (category) {
         const data = await fetchIntelligence(category.id, category.query, keyOverride ?? customApiKey, force);
         if (data.isRateLimited) {
-          setApiKeyModalReason('RATE_LIMIT');
+          setApiKeyModalReason(data.isDailyLimit ? 'DAILY_LIMIT' : 'RATE_LIMIT');
           setShowApiKeyInput(true);
           setIntelligence(prev => prev[categoryId] ? prev : { ...prev, [categoryId]: data });
         } else if (data.isInvalidKey) {
@@ -251,7 +251,7 @@ export default function App() {
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
                 <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
               </div>
-              <h1 className="text-3xl font-bold tracking-tight text-zinc-100 uppercase font-mono">台海戰情即時情報網 <span className="text-xs text-zinc-600 font-mono ml-2">v1.0.9</span></h1>
+              <h1 className="text-3xl font-bold tracking-tight text-zinc-100 uppercase font-mono">台海戰情即時情報網 <span className="text-xs text-zinc-600 font-mono ml-2">v1.0.10</span></h1>
             </div>
             <div className="flex items-center gap-4">
               <p className="text-zinc-500 font-mono text-sm flex items-center gap-2">
@@ -483,19 +483,22 @@ export default function App() {
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
-              className={`bg-[#0a0a0a] tech-border p-6 max-w-md w-full ${apiKeyModalReason === 'RATE_LIMIT' || apiKeyModalReason === 'INVALID' ? 'border-red-500/50 shadow-[0_0_30px_rgba(239,68,68,0.2)]' : 'shadow-2xl'}`}
+              className={`bg-[#0a0a0a] tech-border p-6 max-w-md w-full ${apiKeyModalReason === 'RATE_LIMIT' || apiKeyModalReason === 'DAILY_LIMIT' || apiKeyModalReason === 'INVALID' ? 'border-red-500/50 shadow-[0_0_30px_rgba(239,68,68,0.2)]' : 'shadow-2xl'}`}
             >
-              <div className={`flex items-center gap-3 mb-4 ${apiKeyModalReason === 'RATE_LIMIT' || apiKeyModalReason === 'INVALID' ? 'text-red-500' : 'text-zinc-100'}`}>
-                {apiKeyModalReason === 'RATE_LIMIT' || apiKeyModalReason === 'INVALID' ? <AlertTriangle className="w-6 h-6" /> : <Key className="w-6 h-6" />}
+              <div className={`flex items-center gap-3 mb-4 ${apiKeyModalReason === 'RATE_LIMIT' || apiKeyModalReason === 'DAILY_LIMIT' || apiKeyModalReason === 'INVALID' ? 'text-red-500' : 'text-zinc-100'}`}>
+                {apiKeyModalReason === 'RATE_LIMIT' || apiKeyModalReason === 'DAILY_LIMIT' || apiKeyModalReason === 'INVALID' ? <AlertTriangle className="w-6 h-6" /> : <Key className="w-6 h-6" />}
                 <h2 className="text-lg font-bold">
-                  {apiKeyModalReason === 'RATE_LIMIT' ? 'API 請求次數已達上限' : 
+                  {apiKeyModalReason === 'DAILY_LIMIT' ? '已達每日 API 呼叫上限' : 
+                   apiKeyModalReason === 'RATE_LIMIT' ? 'API 請求頻率過高' : 
                    apiKeyModalReason === 'INVALID' ? 'API 金鑰無效' : 
                    '設定自訂 API 金鑰'}
                 </h2>
               </div>
               <p className="text-zinc-400 text-sm mb-6">
-                {apiKeyModalReason === 'RATE_LIMIT' 
-                  ? '您輸入的 API 金鑰已超出配額限制。請輸入新的 Gemini API 金鑰以繼續使用。此金鑰僅會保存在您當前的瀏覽器記憶體中。'
+                {apiKeyModalReason === 'DAILY_LIMIT'
+                  ? '此 API Key 已達每日呼叫上限 (1500 次)。免費額度將於太平洋時間午夜（約台灣時間下午 3:00 - 4:00）重置。請更換其他 API Key 或等待重置。'
+                  : apiKeyModalReason === 'RATE_LIMIT' 
+                  ? '此 API Key 呼叫頻率過高 (RPM 限制)。系統已自動暫停，請稍後再試，或更換其他 API Key。'
                   : apiKeyModalReason === 'INVALID'
                   ? '您輸入的 API 金鑰無效，請檢查是否輸入正確（注意前後是否有空白）。此金鑰僅會保存在您當前的瀏覽器記憶體中。'
                   : '請輸入您自己的 Gemini API 金鑰。此金鑰僅會保存在您當前的瀏覽器記憶體中。'}
@@ -521,7 +524,7 @@ export default function App() {
                       onChange={(e) => { setTempApiKey(e.target.value); }}
                       placeholder="AIzaSy..."
                       rows={Math.min(5, Math.max(1, Math.ceil(tempApiKey.length / 32)))}
-                      className={`w-full bg-black border border-zinc-700 rounded-lg px-4 py-2 pr-10 text-zinc-200 focus:outline-none focus:ring-1 font-mono text-sm resize-none break-all ${apiKeyModalReason === 'RATE_LIMIT' || apiKeyModalReason === 'INVALID' ? 'focus:border-red-500 focus:ring-red-500' : 'focus:border-blue-500 focus:ring-blue-500'}`}
+                      className={`w-full bg-black border border-zinc-700 rounded-lg px-4 py-2 pr-10 text-zinc-200 focus:outline-none focus:ring-1 font-mono text-sm resize-none break-all ${apiKeyModalReason === 'RATE_LIMIT' || apiKeyModalReason === 'DAILY_LIMIT' || apiKeyModalReason === 'INVALID' ? 'focus:border-red-500 focus:ring-red-500' : 'focus:border-blue-500 focus:ring-blue-500'}`}
                       autoFocus
                     />
                   ) : (
@@ -530,7 +533,7 @@ export default function App() {
                       value={tempApiKey}
                       onChange={(e) => { setTempApiKey(e.target.value); }}
                       placeholder="AIzaSy..."
-                      className={`w-full bg-black border border-zinc-700 rounded-lg px-4 py-2 pr-10 text-zinc-200 focus:outline-none focus:ring-1 font-mono text-sm ${apiKeyModalReason === 'RATE_LIMIT' || apiKeyModalReason === 'INVALID' ? 'focus:border-red-500 focus:ring-red-500' : 'focus:border-blue-500 focus:ring-blue-500'}`}
+                      className={`w-full bg-black border border-zinc-700 rounded-lg px-4 py-2 pr-10 text-zinc-200 focus:outline-none focus:ring-1 font-mono text-sm ${apiKeyModalReason === 'RATE_LIMIT' || apiKeyModalReason === 'DAILY_LIMIT' || apiKeyModalReason === 'INVALID' ? 'focus:border-red-500 focus:ring-red-500' : 'focus:border-blue-500 focus:ring-blue-500'}`}
                       autoFocus
                     />
                   )}
@@ -552,9 +555,9 @@ export default function App() {
                   </button>
                   <button 
                     type="submit"
-                    disabled={(apiKeyModalReason === 'RATE_LIMIT' || apiKeyModalReason === 'INVALID') && !tempApiKey.trim()}
+                    disabled={(apiKeyModalReason === 'RATE_LIMIT' || apiKeyModalReason === 'DAILY_LIMIT' || apiKeyModalReason === 'INVALID') && !tempApiKey.trim()}
                     className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
-                      apiKeyModalReason === 'RATE_LIMIT' || apiKeyModalReason === 'INVALID'
+                      apiKeyModalReason === 'RATE_LIMIT' || apiKeyModalReason === 'DAILY_LIMIT' || apiKeyModalReason === 'INVALID'
                         ? 'bg-red-500/20 text-red-500 border border-red-500/50 hover:bg-red-500/30' 
                         : 'bg-blue-500/20 text-blue-400 border border-blue-500/50 hover:bg-blue-500/30'
                     }`}
