@@ -160,11 +160,18 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
 
   const now = new Date().toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' });
   const todayStr = new Date().toISOString().split('T')[0];
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+  const yesterdayStr = yesterday.toISOString().split('T')[0];
+  
   let prompt = '';
   if (categoryId === 'weekly_threat') {
     prompt = `現在時間是台灣時間 ${now}。
 請嚴格搜尋「今日（${todayStr}）或過去 24 小時內」，關於中國對台灣的最新動態與新聞。
-【重要警告】：請務必過濾掉舊新聞，只採用發布日期為最近 24 小時內的資料。如果沒有最新消息，請明確說明「今日無重大事件」。
+【極度重要警告】：
+1. 你的搜尋查詢「必須」加上時間過濾條件（例如加上 "after:${yesterdayStr}" 或 "when:1d"），確保只搜尋最新資訊。
+2. 請務必過濾掉舊新聞（例如 2024 年的「聯合利劍」演習等歷史事件），只採用發布日期為最近 24 小時內的資料。
+3. 如果沒有最新消息，請明確說明「今日無重大事件」，絕對不要拿舊新聞充數。
 請特別包含「國外主流媒體（如 CNN, BBC, Reuters, Bloomberg 等）」以及「社群網路（如 X/Twitter, Telegram, Reddit 等）」上的相關討論與情報。
 請以專業的軍事與地緣政治情報分析師的角度，撰寫一份即時戰情摘要（繁體中文）。
 請使用 Markdown 格式排版，包含以下內容：
@@ -176,7 +183,10 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
   } else {
     prompt = `現在時間是台灣時間 ${now}。
 請嚴格搜尋「今日（${todayStr}）或過去 24 小時內」，關於中國對台灣的「${categoryQuery}」最新動態與新聞。
-【重要警告】：請務必過濾掉舊新聞，只採用發布日期為最近 24 小時內的資料。如果沒有最新消息，請明確說明「今日無重大事件」。
+【極度重要警告】：
+1. 你的搜尋查詢「必須」加上時間過濾條件（例如加上 "after:${yesterdayStr}" 或 "when:1d"），確保只搜尋最新資訊。
+2. 請務必過濾掉舊新聞（例如 2024 年的「聯合利劍」演習等歷史事件），只採用發布日期為最近 24 小時內的資料。
+3. 如果沒有最新消息，請明確說明「今日無重大事件」，絕對不要拿舊新聞充數。
 請特別包含「國外主流媒體（如 CNN, BBC, Reuters, Bloomberg 等）」以及「社群網路（如 X/Twitter, Telegram, Reddit 等）」上的相關討論與情報。
 請以專業的軍事與地緣政治情報分析師的角度，撰寫一份即時戰情摘要（繁體中文）。
 請使用 Markdown 格式排版，包含以下內容：
@@ -298,9 +308,15 @@ export async function fetchOverallThreatLevel(customApiKey?: string, forceRefres
 
   const now = new Date().toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' });
   const todayStr = new Date().toISOString().split('T')[0];
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+  const yesterdayStr = yesterday.toISOString().split('T')[0];
+
   const prompt = `現在時間是台灣時間 ${now}。
 請嚴格搜尋「今日（${todayStr}）或過去 24 小時內」關於台海局勢的新聞（包含國內外媒體及社群網路），評估目前的整體威脅等級。
-【重要警告】：請務必過濾掉舊新聞，只採用發布日期為最近 24 小時內的資料。
+【極度重要警告】：
+1. 你的搜尋查詢「必須」加上時間過濾條件（例如加上 "after:${yesterdayStr}" 或 "when:1d"），確保只搜尋最新資訊。
+2. 請務必過濾掉舊新聞（例如 2024 年的「聯合利劍」演習等歷史事件），只採用發布日期為最近 24 小時內的資料。
 請依據以下四個面向給予 0~100 的威脅評分，並套用權重計算總分 (Total Score)：
 1. 軍事動態 (Military) - 權重 40%
 2. 經濟封鎖 (Economic) - 權重 25%
