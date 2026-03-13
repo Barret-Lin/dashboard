@@ -9,6 +9,7 @@ import Markdown from 'react-markdown';
 import { motion, AnimatePresence } from 'motion/react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
 import { fetchIntelligence, fetchOverallThreatLevel, IntelligenceData, ThreatLevelData, apiRateManager } from './services/intelligenceService';
+import { SatelliteMaps } from './components/SatelliteMaps';
 
 const CATEGORIES = [
   { id: 'new_threat', name: '本日最新威脅情資', icon: Flame, query: '綜合威脅情資、重大事件總結' },
@@ -361,6 +362,8 @@ export default function App() {
             </div>
           </div>
         </header>
+
+        <SatelliteMaps />
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           
