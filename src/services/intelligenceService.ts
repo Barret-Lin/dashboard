@@ -148,6 +148,17 @@ export interface ThreatLevelData {
 
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
+function getTaipeiDateString(offsetDays = 0) {
+  const d = new Date();
+  const utc = d.getTime() + (d.getTimezoneOffset() * 60000);
+  const taipeiDate = new Date(utc + (3600000 * 8));
+  taipeiDate.setDate(taipeiDate.getDate() + offsetDays);
+  const year = taipeiDate.getFullYear();
+  const month = String(taipeiDate.getMonth() + 1).padStart(2, '0');
+  const day = String(taipeiDate.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 function getLocalCache(key: string) {
   try {
     const cached = localStorage.getItem(key);
@@ -192,15 +203,15 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
   }
 
   const now = new Date().toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' });
-  const todayStr = new Date().toISOString().split('T')[0];
-  const yesterday = new Date();
-  yesterday.setDate(yesterday.getDate() - 1);
-  const yesterdayStr = yesterday.toISOString().split('T')[0];
-  const lastWeek = new Date();
-  lastWeek.setDate(lastWeek.getDate() - 7);
-  const lastWeekStr = lastWeek.toISOString().split('T')[0];
-  const currentYear = new Date().getFullYear();
-  const currentMonth = new Date().getMonth() + 1;
+  const todayStr = getTaipeiDateString(0);
+  const yesterdayStr = getTaipeiDateString(-1);
+  const lastWeekStr = getTaipeiDateString(-7);
+  
+  const d = new Date();
+  const utc = d.getTime() + (d.getTimezoneOffset() * 60000);
+  const taipeiDate = new Date(utc + (3600000 * 8));
+  const currentYear = taipeiDate.getFullYear();
+  const currentMonth = taipeiDate.getMonth() + 1;
 
   let prompt = '';
   if (categoryId === 'new_threat') {
@@ -318,12 +329,14 @@ export async function fetchOverallThreatLevel(customApiKey?: string, forceRefres
   }
 
   const now = new Date().toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' });
-  const todayStr = new Date().toISOString().split('T')[0];
-  const lastWeek = new Date();
-  lastWeek.setDate(lastWeek.getDate() - 7);
-  const lastWeekStr = lastWeek.toISOString().split('T')[0];
-  const currentYear = new Date().getFullYear();
-  const currentMonth = new Date().getMonth() + 1;
+  const todayStr = getTaipeiDateString(0);
+  const lastWeekStr = getTaipeiDateString(-7);
+  
+  const d = new Date();
+  const utc = d.getTime() + (d.getTimezoneOffset() * 60000);
+  const taipeiDate = new Date(utc + (3600000 * 8));
+  const currentYear = taipeiDate.getFullYear();
+  const currentMonth = taipeiDate.getMonth() + 1;
 
   const prompt = `現在時間是台灣時間 ${now} (YYYY-MM-DD: ${todayStr})。
 請嚴格搜尋「過去一週內（${lastWeekStr} 至今）」關於台海局勢的新聞（包含國內外媒體及社群網路），評估目前的整體威脅等級。
@@ -423,5 +436,103 @@ JSON 格式範例：
       isDailyLimit,
       isInvalidKey
     };
+  }
+}
+
+export interface MapData {
+  surveillance: {
+    updateTime: string;
+    aircraftTotal: number;
+    aircraftCrossed: number;
+    shipsTotal: number;
+    officialShips: number;
+    targets: { id: number; lat: number; lng: number; type: 'aircraft' | 'ship' | 'fishing'; heading: number }[];
+  };
+  exerciseZones: {
+    name: string;
+    time: string;
+    type: string;
+    coordinates: [number, number][];
+  }[];
+}
+
+export async function fetchMapData(customApiKey?: string, forceRefresh = false): Promise<MapData | null> {
+  const cleanApiKey = customApiKey?.trim().replace(/[\s\uFEFF\xA0]/g, '').replace(/[^a-zA-Z0-9_-]/g, '');
+  if (!cleanApiKey) return null;
+
+  const cacheKey = `map_data_${cleanApiKey || 'default'}`;
+  
+  if (!forceRefresh) {
+    const cachedData = getLocalCache(cacheKey);
+    if (cachedData) {
+      return cachedData as MapData;
+    }
+  }
+
+  const now = new Date().toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' });
+  const todayStr = getTaipeiDateString(0);
+  const yesterdayStr = getTaipeiDateString(-1);
+
+  const prompt = `現在時間是台灣時間 ${now} (YYYY-MM-DD: ${todayStr})。
+請扮演頂尖的開源情報（OSINT）分析師。你的任務是搜尋「國防部 臺海周邊海、空域動態」最新發布的資料（通常為今日或昨日發布），以及中國海事局最新的「航行警告 / 禁航區 / 演習」公告。
+
+【🔴 絕對強制指令 🔴】：
+1. 搜尋策略：請搜尋 "${todayStr} 國防部 臺海周邊海 空域動態" 或 "${yesterdayStr} 國防部 臺海周邊海 空域動態"。
+2. 必須回傳純 JSON 格式，絕對不要包含 Markdown 語法 (如 \`\`\`json) 或其他文字。
+
+JSON 格式範例與說明：
+{
+  "surveillance": {
+    "updateTime": "2026/03/13 06:00", // 官方發布時間或資料截止時間
+    "aircraftTotal": 15, // 偵獲共機總數
+    "aircraftCrossed": 10, // 逾越海峽中線及進入西南空域數
+    "shipsTotal": 6, // 偵獲共艦總數
+    "officialShips": 2, // 公務船總數
+    "targets": [ // 根據數量隨機生成合理的經緯度座標 (台灣周邊，lat: 21~26, lng: 119~123)
+      { "id": 1, "lat": 24.5, "lng": 119.5, "type": "aircraft", "heading": 90 },
+      { "id": 2, "lat": 22.5, "lng": 120.5, "type": "ship", "heading": 180 }
+    ]
+  },
+  "exerciseZones": [ // 若無最新禁航區，可回傳空陣列 []
+    {
+      "name": "海空聯合戰備警巡",
+      "time": "2026/03/10 12:00 - 03/15 12:00",
+      "type": "實彈射擊、海空封控",
+      "coordinates": [ // 禁航區的多邊形座標
+        [25.25, 120.23], [25.25, 120.85], [24.83, 120.85], [24.83, 120.23]
+      ]
+    }
+  ]
+}`;
+
+  const ai = new GoogleGenAI({ apiKey: cleanApiKey });
+  try {
+    const response = await executeWithLock(() => ai.models.generateContent({
+      model: 'gemini-3-flash-preview',
+      contents: prompt,
+      config: {
+        tools: [{ googleSearch: {} }],
+        temperature: 0.1,
+        responseMimeType: 'application/json',
+      },
+    }));
+
+    const text = response.text || '{}';
+    const parsedData = JSON.parse(text);
+    
+    // Ensure targets have IDs and valid types
+    if (parsedData.surveillance && Array.isArray(parsedData.surveillance.targets)) {
+      parsedData.surveillance.targets = parsedData.surveillance.targets.map((t: any, i: number) => ({
+        ...t,
+        id: t.id || i + 1,
+        type: ['aircraft', 'ship', 'fishing'].includes(t.type) ? t.type : 'ship'
+      }));
+    }
+
+    setLocalCache(cacheKey, parsedData);
+    return parsedData as MapData;
+  } catch (error) {
+    console.error("Error fetching map data:", error);
+    return null;
   }
 }

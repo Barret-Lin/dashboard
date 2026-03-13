@@ -363,7 +363,7 @@ export default function App() {
           </div>
         </header>
 
-        <SatelliteMaps />
+        <SatelliteMaps apiKey={customApiKey} />
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           

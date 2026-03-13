@@ -1,8 +1,9 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { MapContainer, TileLayer, Polygon, Marker, Popup } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { RefreshCw, Map as MapIcon, Crosshair, AlertTriangle } from 'lucide-react';
+import { fetchMapData, MapData } from '../services/intelligenceService';
 
 // Approximate 2022 PLA exercise zones around Taiwan
 const EXERCISE_ZONES: [number, number][][] = [
@@ -51,35 +52,54 @@ const createTargetIcon = (type: string, heading: number) => {
   });
 };
 
-export const SatelliteMaps: React.FC = () => {
+export const SatelliteMaps: React.FC<{ apiKey?: string }> = ({ apiKey }) => {
   const [lastUpdated1, setLastUpdated1] = useState<Date>(new Date());
   const [lastUpdated2, setLastUpdated2] = useState<Date>(new Date());
   const [isRefreshing1, setIsRefreshing1] = useState(false);
   const [isRefreshing2, setIsRefreshing2] = useState(false);
+  
+  const [mapData, setMapData] = useState<MapData | null>(null);
   const [targets, setTargets] = useState(INITIAL_TARGETS);
+  const [exerciseZones, setExerciseZones] = useState<MapData['exerciseZones']>([]);
+
+  const loadData = useCallback(async (force = false) => {
+    if (!apiKey) return;
+    setIsRefreshing1(true);
+    setIsRefreshing2(true);
+    try {
+      const data = await fetchMapData(apiKey, force);
+      if (data) {
+        setMapData(data);
+        if (data.surveillance?.targets?.length > 0) {
+          setTargets(data.surveillance.targets);
+        }
+        if (data.exerciseZones) {
+          setExerciseZones(data.exerciseZones);
+        }
+        const now = new Date();
+        setLastUpdated1(now);
+        setLastUpdated2(now);
+      }
+    } finally {
+      setIsRefreshing1(false);
+      setIsRefreshing2(false);
+    }
+  }, [apiKey]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
 
   const handleRefresh1 = useCallback(() => {
-    setIsRefreshing1(true);
-    setTimeout(() => {
-      setLastUpdated1(new Date());
-      setIsRefreshing1(false);
-    }, 1500);
-  }, []);
+    loadData(true);
+  }, [loadData]);
 
   const handleRefresh2 = useCallback(() => {
-    setIsRefreshing2(true);
-    setTimeout(() => {
-      // Simulate targets moving
-      setTargets(prev => prev.map(t => ({
-        ...t,
-        lat: t.lat + (Math.random() - 0.5) * 0.1,
-        lng: t.lng + (Math.random() - 0.5) * 0.1,
-        heading: (t.heading + (Math.random() - 0.5) * 30) % 360,
-      })));
-      setLastUpdated2(new Date());
-      setIsRefreshing2(false);
-    }, 1500);
-  }, []);
+    loadData(true);
+  }, [loadData]);
+
+  // Fallback to initial zones if none fetched
+  const displayZones = exerciseZones.length > 0 ? exerciseZones : [{ name: '常態演訓區', time: '持續', type: '海空巡邏', coordinates: EXERCISE_ZONES[0] }];
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 lg:gap-6 mb-6">
@@ -117,7 +137,13 @@ export const SatelliteMaps: React.FC = () => {
               url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
               maxZoom={18}
             />
-            {EXERCISE_ZONES.map((positions, idx) => (
+            {exerciseZones.length > 0 ? exerciseZones.map((zone, idx) => (
+              <Polygon 
+                key={idx} 
+                positions={zone.coordinates} 
+                pathOptions={{ color: '#ef4444', fillColor: '#ef4444', fillOpacity: 0.3, weight: 2, dashArray: '5, 5' }} 
+              />
+            )) : EXERCISE_ZONES.map((positions, idx) => (
               <Polygon 
                 key={idx} 
                 positions={positions} 
@@ -127,15 +153,17 @@ export const SatelliteMaps: React.FC = () => {
           </MapContainer>
           
           {/* Announcement Overlay */}
-          <div className="absolute bottom-2 left-2 z-[500] bg-black/80 border border-red-500/50 p-2 rounded text-[9px] md:text-[10px] font-mono backdrop-blur-sm pointer-events-none shadow-[0_0_10px_rgba(239,68,68,0.2)]">
-            <div className="text-red-500 font-bold mb-0.5 flex items-center gap-1">
-              <AlertTriangle className="w-3 h-3" />
-              [NAVWARN] 禁航/禁飛區公告
+          {exerciseZones.length > 0 && (
+            <div className="absolute bottom-2 left-2 z-[500] bg-black/80 border border-red-500/50 p-2 rounded text-[9px] md:text-[10px] font-mono backdrop-blur-sm pointer-events-none shadow-[0_0_10px_rgba(239,68,68,0.2)]">
+              <div className="text-red-500 font-bold mb-0.5 flex items-center gap-1">
+                <AlertTriangle className="w-3 h-3" />
+                [NAVWARN] 禁航/禁飛區公告
+              </div>
+              <div className="text-zinc-300">主題: {exerciseZones[0].name}</div>
+              <div className="text-zinc-300">時間: {exerciseZones[0].time}</div>
+              <div className="text-zinc-300">性質: {exerciseZones[0].type}</div>
             </div>
-            <div className="text-zinc-300">主題: 海空聯合戰備警巡</div>
-            <div className="text-zinc-300">時間: 2026/03/10 12:00 - 03/15 12:00</div>
-            <div className="text-zinc-300">性質: 實彈射擊、海空封控</div>
-          </div>
+          )}
 
           {/* Overlay scanning effect */}
           <div className="absolute inset-0 pointer-events-none bg-[linear-gradient(transparent_50%,rgba(0,0,0,0.25)_50%)] bg-[length:100%_4px] z-[400] opacity-30"></div>
@@ -193,6 +221,20 @@ export const SatelliteMaps: React.FC = () => {
               </Marker>
             ))}
           </MapContainer>
+          
+          {/* Surveillance Stats Overlay */}
+          {mapData?.surveillance && (
+            <div className="absolute bottom-2 left-2 z-[500] bg-black/80 border border-emerald-500/50 p-2 rounded text-[9px] md:text-[10px] font-mono backdrop-blur-sm pointer-events-none shadow-[0_0_10px_rgba(16,185,129,0.2)]">
+              <div className="text-emerald-500 font-bold mb-0.5">
+                [STATS] 國防部即時動態
+              </div>
+              <div className="text-zinc-300">更新時間: {mapData.surveillance.updateTime}</div>
+              <div className="text-zinc-300">偵獲共機: <span className="text-red-400">{mapData.surveillance.aircraftTotal}</span> 架次 (逾越中線: {mapData.surveillance.aircraftCrossed})</div>
+              <div className="text-zinc-300">偵獲共艦: <span className="text-amber-400">{mapData.surveillance.shipsTotal}</span> 艘次</div>
+              <div className="text-zinc-300">公務船隻: <span className="text-emerald-400">{mapData.surveillance.officialShips}</span> 艘次</div>
+            </div>
+          )}
+
           {/* Radar sweep effect */}
           <div className="absolute inset-0 pointer-events-none z-[400] overflow-hidden">
             <div className="absolute top-1/2 left-1/2 w-[200%] h-[200%] -translate-x-1/2 -translate-y-1/2 bg-[conic-gradient(from_0deg,transparent_0deg,rgba(16,185,129,0.1)_90deg,transparent_90deg)] animate-[spin_4s_linear_infinite] rounded-full"></div>
