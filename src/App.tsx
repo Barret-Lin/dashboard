@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Crosshair, TrendingDown, Globe, RefreshCw, AlertTriangle, ExternalLink, Radar, Clock, Flame, Key, Lock, Unlock, Copy, Check, Activity, Eye, EyeOff } from 'lucide-react';
 import Markdown from 'react-markdown';
 import { motion, AnimatePresence } from 'motion/react';
@@ -11,7 +11,7 @@ import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recha
 import { fetchIntelligence, fetchOverallThreatLevel, IntelligenceData, ThreatLevelData, apiRateManager } from './services/intelligenceService';
 
 const CATEGORIES = [
-  { id: 'weekly_threat', name: '本日最新威脅情資', icon: Flame, query: '綜合威脅情資、重大事件總結' },
+  { id: 'new_threat', name: '本日最新威脅情資', icon: Flame, query: '綜合威脅情資、重大事件總結' },
   { id: 'military', name: '軍事動態', icon: Crosshair, query: '軍事演習、軍機繞台、軍艦活動、飛彈試射' },
   { id: 'economic', name: '經濟封鎖', icon: TrendingDown, query: '經濟制裁、禁止進口、關稅壁壘、貿易壁壘' },
   { id: 'diplomatic', name: '外交打壓', icon: Globe, query: '斷交、國際組織參與受阻、施壓他國' },
@@ -41,10 +41,10 @@ const getScoreStyle = (level: string) => {
   return `text-[1.5em] font-bold ${colorClass}`;
 };
 
-function CopyableMarkdownLink({ href, children, ...props }: any) {
+const CopyableMarkdownLink = React.memo(function CopyableMarkdownLink({ href, children, ...props }: any) {
   const [copied, setCopied] = useState(false);
 
-  const handleCopy = (e: React.MouseEvent) => {
+  const handleCopy = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
     if (href) {
@@ -52,7 +52,7 @@ function CopyableMarkdownLink({ href, children, ...props }: any) {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     }
-  };
+  }, [href]);
 
   return (
     <span className="inline-flex items-center gap-1 align-middle">
@@ -70,18 +70,18 @@ function CopyableMarkdownLink({ href, children, ...props }: any) {
       )}
     </span>
   );
-}
+});
 
-function CopyableSourceCard({ source }: { source: { title: string; uri: string } }) {
+const CopyableSourceCard = React.memo(function CopyableSourceCard({ source }: { source: { title: string; uri: string } }) {
   const [copied, setCopied] = useState(false);
 
-  const handleCopy = (e: React.MouseEvent) => {
+  const handleCopy = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
     navigator.clipboard.writeText(source.uri);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
-  };
+  }, [source.uri]);
 
   return (
     <div className="relative group">
@@ -103,7 +103,21 @@ function CopyableSourceCard({ source }: { source: { title: string; uri: string }
       </button>
     </div>
   );
-}
+});
+
+const MemoizedMarkdown = React.memo(function MemoizedMarkdown({ children }: { children: string }) {
+  return (
+    <div className="markdown-body">
+      <Markdown
+        components={{
+          a: CopyableMarkdownLink
+        }}
+      >
+        {children}
+      </Markdown>
+    </div>
+  );
+});
 
 export default function App() {
   const [activeTab, setActiveTab] = useState(CATEGORIES[0].id);
@@ -240,25 +254,25 @@ export default function App() {
   const isLoading = loading[activeTab];
 
   return (
-    <div className="min-h-screen bg-[#050505] text-zinc-300 font-sans selection:bg-red-500/30 p-4 md:p-8 scanline-bg">
-      <div className="max-w-7xl mx-auto space-y-6 relative z-10">
+    <div className="min-h-screen bg-[#050505] text-zinc-300 font-sans selection:bg-red-500/30 p-4 md:p-8 scanline-bg flex flex-col">
+      <div className="max-w-7xl mx-auto w-full space-y-6 relative z-10 flex-1 flex flex-col">
         
         {/* Header */}
-        <header className="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-zinc-800 pb-6">
+        <header className="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b-2 border-dashed border-zinc-800 pb-6">
           <div>
             <div className="flex items-center gap-3 mb-2">
               <div className="relative flex h-3 w-3">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
                 <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
               </div>
-              <h1 className="text-3xl font-bold tracking-tight text-zinc-100 uppercase font-mono">台海戰情即時情報網 <span className="text-xs text-zinc-600 font-mono ml-2">v1.0.11</span></h1>
+              <h1 className="text-3xl font-bold tracking-tight text-zinc-100 uppercase font-mono">台海戰情即時情報網 <span className="text-xs text-zinc-600 font-mono ml-2">v1.0.12</span></h1>
             </div>
             <div className="flex items-center gap-4">
-              <p className="text-zinc-500 font-mono text-sm flex items-center gap-2">
-                <Clock className="w-4 h-4" />
+              <p className="text-zinc-500 font-mono text-[10px] tracking-widest uppercase flex items-center gap-2">
+                <Clock className="w-3 h-3" />
                 SYS.TIME: {lastUpdated ? lastUpdated.toLocaleTimeString() : '--:--:--'}
               </p>
-              <div className={`flex items-center gap-2 px-2 py-1 rounded border font-mono text-xs ${apiCallCount >= 14 ? 'bg-red-500/20 border-red-500/50 text-red-400 animate-pulse' : 'bg-zinc-900 border-zinc-800 text-zinc-500'}`} title="API 呼叫次數 (每分鐘上限 15 次)">
+              <div className={`flex items-center gap-2 px-2 py-0.5 rounded border font-mono text-[10px] tracking-widest uppercase ${apiCallCount >= 14 ? 'bg-red-500/20 border-red-500/50 text-red-400 animate-pulse' : 'bg-[#111] border-zinc-800 text-zinc-500'}`} title="API 呼叫次數 (每分鐘上限 15 次)">
                 <Activity className="w-3 h-3" />
                 API: {apiCallCount}/15 RPM
               </div>
@@ -266,9 +280,9 @@ export default function App() {
           </div>
 
           {/* Threat Level Indicator */}
-          <div className="flex flex-wrap items-center gap-4 bg-[#0a0a0a] p-4 tech-border">
+          <div className="flex flex-wrap items-center gap-4 bg-[#111] p-4 tech-border">
             <div className="flex flex-col">
-              <span className="text-xs font-mono text-zinc-500 uppercase tracking-wider mb-1">Overall Threat Level</span>
+              <span className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest mb-1">Overall Threat Level</span>
               {threatLoading ? (
                 <div className="h-6 w-24 bg-zinc-800 animate-pulse rounded"></div>
               ) : (
@@ -279,7 +293,7 @@ export default function App() {
                   {threatLevel?.totalScore !== undefined && (
                     <button
                       onClick={() => setShowThreatDetails(true)}
-                      className="px-3 py-1 bg-zinc-800/50 hover:bg-zinc-700 text-xs font-mono rounded border border-zinc-700 transition-colors flex items-center gap-2"
+                      className="px-3 py-1 bg-[#1a1a1a] hover:bg-zinc-800 text-xs font-mono rounded border border-zinc-700 transition-colors flex items-center gap-2"
                       title="點擊查看詳細評分"
                     >
                       <span className="text-zinc-500">SCORE:</span> 
@@ -296,15 +310,22 @@ export default function App() {
                 <div className="h-4 w-full bg-zinc-800 animate-pulse rounded"></div>
               ) : (
                 <div className="flex flex-col gap-1">
-                  <p className="text-xs text-zinc-400 line-clamp-2">{threatLevel?.summary || '系統初始化中...'}</p>
+                  <p className="text-xs text-zinc-400 line-clamp-2 font-mono">{threatLevel?.summary || '系統初始化中...'}</p>
                   {threatLevel?.sources && threatLevel.sources.length > 0 && (
                     <div className="flex items-center gap-2 mt-1 overflow-x-auto pb-1 no-scrollbar">
                       <span className="text-[10px] text-zinc-500 uppercase font-mono shrink-0">Sources:</span>
-                      {threatLevel.sources.slice(0, 3).map((s, i) => (
-                        <a key={i} href={s.uri} target="_blank" rel="noreferrer" className="text-[10px] text-blue-400 hover:text-blue-300 truncate max-w-[100px] border border-blue-900/50 bg-blue-900/20 px-1.5 py-0.5 rounded shrink-0">
-                          {s.title}
-                        </a>
-                      ))}
+                      {threatLevel.sources.slice(0, 3).map((s, i) => {
+                        try {
+                          const domain = new URL(s.uri).hostname.replace('www.', '');
+                          return (
+                            <a key={i} href={s.uri} target="_blank" rel="noreferrer" className="text-[10px] text-blue-400 hover:text-blue-300 truncate max-w-[100px] border border-blue-900/50 bg-blue-900/20 px-1.5 py-0.5 rounded shrink-0 font-mono">
+                              {domain}
+                            </a>
+                          );
+                        } catch (e) {
+                          return null;
+                        }
+                      })}
                     </div>
                   )}
                 </div>
@@ -430,15 +451,7 @@ export default function App() {
                       exit={{ opacity: 0, y: -10 }}
                       className="flex flex-col h-full"
                     >
-                      <div className="markdown-body flex-1">
-                        <Markdown
-                          components={{
-                            a: ({node, ...props}) => <CopyableMarkdownLink {...props} />
-                          }}
-                        >
-                          {activeData.text}
-                        </Markdown>
-                      </div>
+                      <MemoizedMarkdown>{activeData.text}</MemoizedMarkdown>
 
                       {/* Sources Section */}
                       {activeData.sources.length > 0 && (
@@ -506,7 +519,7 @@ export default function App() {
               <form onSubmit={(e) => {
                 e.preventDefault();
                 // Strictly remove ALL characters except valid Base64URL chars used in Google API keys
-                const cleanKey = tempApiKey.replace(/[^a-zA-Z0-9_-]/g, '');
+                const cleanKey = tempApiKey.trim().replace(/[\s\uFEFF\xA0]/g, '').replace(/[^a-zA-Z0-9_-]/g, '');
                 if (cleanKey) {
                   setCustomApiKey(cleanKey);
                   setShowApiKeyInput(false);
@@ -526,6 +539,10 @@ export default function App() {
                       rows={Math.min(5, Math.max(1, Math.ceil(tempApiKey.length / 32)))}
                       className={`w-full bg-black border border-zinc-700 rounded-lg px-4 py-2 pr-10 text-zinc-200 focus:outline-none focus:ring-1 font-mono text-sm resize-none break-all ${apiKeyModalReason === 'RATE_LIMIT' || apiKeyModalReason === 'DAILY_LIMIT' || apiKeyModalReason === 'INVALID' ? 'focus:border-red-500 focus:ring-red-500' : 'focus:border-blue-500 focus:ring-blue-500'}`}
                       autoFocus
+                      autoCapitalize="none"
+                      autoCorrect="off"
+                      spellCheck="false"
+                      autoComplete="off"
                     />
                   ) : (
                     <input 
@@ -535,6 +552,10 @@ export default function App() {
                       placeholder="AIzaSy..."
                       className={`w-full bg-black border border-zinc-700 rounded-lg px-4 py-2 pr-10 text-zinc-200 focus:outline-none focus:ring-1 font-mono text-sm ${apiKeyModalReason === 'RATE_LIMIT' || apiKeyModalReason === 'DAILY_LIMIT' || apiKeyModalReason === 'INVALID' ? 'focus:border-red-500 focus:ring-red-500' : 'focus:border-blue-500 focus:ring-blue-500'}`}
                       autoFocus
+                      autoCapitalize="none"
+                      autoCorrect="off"
+                      spellCheck="false"
+                      autoComplete="off"
                     />
                   )}
                   <button

@@ -1,116 +1,149 @@
-import { GoogleGenAI, Type } from '@google/genai';
-
-export const RPM_LIMIT = 14;
-const RPM_WINDOW = 60000; // 60 seconds
+import { GoogleGenAI } from '@google/genai';
 
 class ApiRateManager {
-  private callTimestamps: number[] = [];
-  private listeners: ((count: number) => void)[] = [];
+  private queue: (() => Promise<void>)[] = [];
+  private isProcessing = false;
+  private lastRequestTime = 0;
+  private readonly minDelayMs = 2000; // 2 seconds delay
+  private callCount = 0;
+  private lastResetTime = Date.now();
+  private subscribers: ((count: number) => void)[] = [];
+  private readonly STORAGE_KEY = 'api_rate_manager_state';
 
   constructor() {
+    this.loadState();
+    // Cleanup interval every minute
+    setInterval(() => this.cleanup(), 60000);
+  }
+
+  private loadState() {
     try {
-      const stored = localStorage.getItem('api_call_history');
+      const stored = localStorage.getItem(this.STORAGE_KEY);
       if (stored) {
-        this.callTimestamps = JSON.parse(stored);
-        this.cleanHistory();
+        const state = JSON.parse(stored);
+        const now = Date.now();
+        // Reset if more than 1 minute has passed
+        if (now - state.lastResetTime > 60000) {
+          this.callCount = 0;
+          this.lastResetTime = now;
+        } else {
+          this.callCount = state.callCount;
+          this.lastResetTime = state.lastResetTime;
+        }
       }
-    } catch (e) {}
-
-    setInterval(() => {
-      const oldCount = this.callTimestamps.length;
-      this.cleanHistory();
-      if (this.callTimestamps.length !== oldCount) {
-        this.notify();
-      }
-    }, 1000);
+    } catch (e) {
+      // ignore
+    }
   }
 
-  private cleanHistory() {
-    const now = Date.now();
-    this.callTimestamps = this.callTimestamps.filter(t => now - t < RPM_WINDOW);
+  private saveState() {
     try {
-      localStorage.setItem('api_call_history', JSON.stringify(this.callTimestamps));
-    } catch (e) {}
+      localStorage.setItem(this.STORAGE_KEY, JSON.stringify({
+        callCount: this.callCount,
+        lastResetTime: this.lastResetTime
+      }));
+    } catch (e) {
+      // ignore
+    }
   }
 
-  public getCount(): number {
-    this.cleanHistory();
-    return this.callTimestamps.length;
+  private cleanup() {
+    const now = Date.now();
+    if (now - this.lastResetTime > 60000) {
+      this.callCount = 0;
+      this.lastResetTime = now;
+      this.saveState();
+      this.notifySubscribers();
+    }
   }
 
-  public subscribe(listener: (count: number) => void) {
-    this.listeners.push(listener);
-    listener(this.getCount());
+  subscribe(callback: (count: number) => void): () => void {
+    this.subscribers.push(callback);
+    callback(this.callCount);
     return () => {
-      this.listeners = this.listeners.filter(l => l !== listener);
+      this.subscribers = this.subscribers.filter(cb => cb !== callback);
     };
   }
 
-  private notify() {
-    const count = this.getCount();
-    this.listeners.forEach(l => l(count));
+  private notifySubscribers() {
+    this.subscribers.forEach(cb => cb(this.callCount));
   }
 
-  public async recordCall() {
-    this.cleanHistory();
-    this.callTimestamps.push(Date.now());
-    try {
-      localStorage.setItem('api_call_history', JSON.stringify(this.callTimestamps));
-    } catch (e) {}
-    this.notify();
-  }
-
-  public async waitForSlot() {
-    while (true) {
-      try {
-        const stored = localStorage.getItem('api_call_history');
-        if (stored) {
-          this.callTimestamps = JSON.parse(stored);
+  async enqueue<T>(task: () => Promise<T>): Promise<T> {
+    return new Promise((resolve, reject) => {
+      this.queue.push(async () => {
+        try {
+          this.cleanup();
+          this.callCount++;
+          this.saveState();
+          this.notifySubscribers();
+          
+          const result = await task();
+          resolve(result);
+        } catch (error) {
+          reject(error);
         }
-      } catch (e) {}
-      this.cleanHistory();
-      if (this.callTimestamps.length < RPM_LIMIT) {
-        break;
+      });
+      this.processQueue();
+    });
+  }
+
+  private async processQueue() {
+    if (this.isProcessing || this.queue.length === 0) return;
+    this.isProcessing = true;
+
+    while (this.queue.length > 0) {
+      const now = Date.now();
+      const timeSinceLastRequest = now - this.lastRequestTime;
+      
+      if (timeSinceLastRequest < this.minDelayMs) {
+        await new Promise(resolve => setTimeout(resolve, this.minDelayMs - timeSinceLastRequest));
       }
-      const oldest = this.callTimestamps[0];
-      const waitTime = RPM_WINDOW - (Date.now() - oldest) + 100;
-      await new Promise(resolve => setTimeout(resolve, waitTime));
+
+      const task = this.queue.shift();
+      if (task) {
+        this.lastRequestTime = Date.now();
+        await task();
+      }
     }
+
+    this.isProcessing = false;
   }
 }
 
 export const apiRateManager = new ApiRateManager();
 
-let apiLock = Promise.resolve();
-
-async function executeWithLock<T>(fn: () => Promise<T>): Promise<T> {
-  let releaseLock: () => void;
-  const nextLock = new Promise<void>(resolve => {
-    releaseLock = resolve;
-  });
-  
-  const currentLock = apiLock;
-  apiLock = currentLock.then(() => nextLock);
-  
-  await currentLock;
-  try {
-    await apiRateManager.waitForSlot();
-    await apiRateManager.recordCall();
-    return await fn();
-  } finally {
-    // Add a 2000ms delay between requests to prevent concurrency/burst rate limits
-    setTimeout(releaseLock, 2000);
-  }
+export async function executeWithLock<T>(task: () => Promise<T>): Promise<T> {
+  return apiRateManager.enqueue(task);
 }
 
 export interface IntelligenceData {
   text: string;
   sources: { title: string; uri: string }[];
+  timestamp?: number;
+  isMissingKey?: boolean;
   isRateLimited?: boolean;
   isDailyLimit?: boolean;
   isInvalidKey?: boolean;
-  isMissingKey?: boolean;
+}
+
+export interface ThreatLevelData {
+  level: 'LOW' | 'GUARDED' | 'ELEVATED' | 'HIGH' | 'CRITICAL';
+  totalScore: number;
+  summary: string;
+  sources: { title: string; uri: string }[];
   timestamp?: number;
+  scores: {
+    military: number;
+    economic: number;
+    diplomatic: number;
+    cognitive: number;
+  };
+  isMissingKey?: boolean;
+  isRateLimited?: boolean;
+  isDailyLimit?: boolean;
+  isInvalidKey?: boolean;
+  explanation?: string;
 }
 
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
@@ -140,7 +173,7 @@ function setLocalCache(key: string, data: any) {
 }
 
 export async function fetchIntelligence(categoryId: string, categoryQuery: string, customApiKey?: string, forceRefresh = false): Promise<IntelligenceData> {
-  const cleanApiKey = customApiKey?.replace(/[^a-zA-Z0-9_-]/g, '');
+  const cleanApiKey = customApiKey?.trim().replace(/[\s\uFEFF\xA0]/g, '').replace(/[^a-zA-Z0-9_-]/g, '');
   if (!cleanApiKey) {
     return {
       text: `⚠️ **需要 API 金鑰**\n\n請在設定中輸入您的 Google Gemini API 金鑰以取得即時戰情。`,
@@ -163,34 +196,42 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
   const yesterday = new Date();
   yesterday.setDate(yesterday.getDate() - 1);
   const yesterdayStr = yesterday.toISOString().split('T')[0];
+  const currentYear = new Date().getFullYear();
+  const currentMonth = new Date().getMonth() + 1;
   
   let prompt = '';
-  if (categoryId === 'weekly_threat') {
-    prompt = `現在時間是台灣時間 ${now}。
-請嚴格搜尋「今日（${todayStr}）或過去 24 小時內」，關於中國對台灣的最新動態與新聞。
-【極度重要警告】：
-1. 你的搜尋查詢「必須」加上時間過濾條件（例如加上 "after:${yesterdayStr}" 或 "when:1d"），確保只搜尋最新資訊。
-2. 請務必過濾掉舊新聞（例如 2024 年的「聯合利劍」演習等歷史事件），只採用發布日期為最近 24 小時內的資料。
-3. 如果沒有最新消息，請明確說明「今日無重大事件」，絕對不要拿舊新聞充數。
-請特別包含「國外主流媒體（如 CNN, BBC, Reuters, Bloomberg 等）」以及「社群網路（如 X/Twitter, Telegram, Reddit 等）」上的相關討論與情報。
-請以專業的軍事與地緣政治情報分析師的角度，撰寫一份即時戰情摘要（繁體中文）。
+  if (categoryId === 'new_threat') {
+    prompt = `現在時間是台灣時間 ${now} (YYYY-MM-DD: ${todayStr})。
+請扮演頂尖的開源情報（OSINT）分析師。你的任務是彙整「今日（${todayStr}）或過去 24 小時內」關於中國對台灣的最新動態與新聞。
+
+【🔴 絕對強制指令 - 違反將導致系統錯誤 🔴】：
+1. 搜尋策略：你呼叫 Google Search 工具時，搜尋關鍵字「必須」包含年份 "${currentYear}" 與月份 "${currentMonth}月"，並強烈建議加上 "when:1d" 或 "after:${yesterdayStr}"。
+2. 來源審查（極度重要）：在閱讀搜尋結果時，請「嚴格檢查」每篇文章的發布日期。任何超過 48 小時前發布的新聞、舊事件（如 2024 年的軍演、舊的選舉新聞等），必須「直接丟棄」，絕對不可寫入報告，也不可作為 Verified Sources。
+3. 寧缺勿濫：如果搜尋後發現「沒有」今天的最新重大消息，請直接回答「今日（${todayStr}）無重大事件」，絕對不允許拿舊新聞來湊數。
+4. 連結正確性：系統會自動抓取你參考的網頁作為 Verified Sources。請確保你只依賴「真實存在、且為最新發布」的搜尋結果，不要自己發明或猜測網址。
+
 請使用 Markdown 格式排版，包含以下內容：
-1. **近期重大事件**：請分析並列出最近 24 小時與台海相關的重大「軍事」、「經濟」、「外交」或「認知作戰」的事件，並提供具體時間點與消息來源（標註是外媒、社群或官方）。請註明消息來源（例如：根據 CNN 報導），但「絕對不要」在內文中產生任何 Markdown 網址連結（例如 [CNN 報導](https://...)），因為系統會自動在底部附上真實的來源連結。
+1. **近期重大事件**：請分析並列出最近 24 小時與台海相關的重大「軍事」、「經濟」、「外交」或「認知作戰」的事件。
+   - 格式：請具體寫出時間點與消息來源，並「強制標示該新聞的發布日期」（例如：根據 CNN 於 ${todayStr} 的報導）。
+   - 警告：「絕對不要」在內文中產生任何 Markdown 網址連結（例如 [CNN 報導](https://...)），因為系統會自動在底部附上真實的來源連結。
 2. **威脅評估**：分析這些行動對台灣的整體影響與威脅程度。
 3. **戰略意圖分析**：簡述背後可能的戰略或政治目的。
 
 請確保資訊是最新的，並基於真實的新聞報導與社群動態。`;
   } else {
-    prompt = `現在時間是台灣時間 ${now}。
-請嚴格搜尋「今日（${todayStr}）或過去 24 小時內」，關於中國對台灣的「${categoryQuery}」最新動態與新聞。
-【極度重要警告】：
-1. 你的搜尋查詢「必須」加上時間過濾條件（例如加上 "after:${yesterdayStr}" 或 "when:1d"），確保只搜尋最新資訊。
-2. 請務必過濾掉舊新聞（例如 2024 年的「聯合利劍」演習等歷史事件），只採用發布日期為最近 24 小時內的資料。
-3. 如果沒有最新消息，請明確說明「今日無重大事件」，絕對不要拿舊新聞充數。
-請特別包含「國外主流媒體（如 CNN, BBC, Reuters, Bloomberg 等）」以及「社群網路（如 X/Twitter, Telegram, Reddit 等）」上的相關討論與情報。
-請以專業的軍事與地緣政治情報分析師的角度，撰寫一份即時戰情摘要（繁體中文）。
+    prompt = `現在時間是台灣時間 ${now} (YYYY-MM-DD: ${todayStr})。
+請扮演頂尖的開源情報（OSINT）分析師。你的任務是彙整「今日（${todayStr}）或過去 24 小時內」關於中國對台灣的「${categoryQuery}」最新動態與新聞。
+
+【🔴 絕對強制指令 - 違反將導致系統錯誤 🔴】：
+1. 搜尋策略：你呼叫 Google Search 工具時，搜尋關鍵字「必須」包含年份 "${currentYear}" 與月份 "${currentMonth}月"，並強烈建議加上 "when:1d" 或 "after:${yesterdayStr}"。
+2. 來源審查（極度重要）：在閱讀搜尋結果時，請「嚴格檢查」每篇文章的發布日期。任何超過 48 小時前發布的新聞、舊事件（如 2024 年的軍演、舊的選舉新聞等），必須「直接丟棄」，絕對不可寫入報告，也不可作為 Verified Sources。
+3. 寧缺勿濫：如果搜尋後發現「沒有」今天的最新重大消息，請直接回答「今日（${todayStr}）無重大事件」，絕對不允許拿舊新聞來湊數。
+4. 連結正確性：系統會自動抓取你參考的網頁作為 Verified Sources。請確保你只依賴「真實存在、且為最新發布」的搜尋結果，不要自己發明或猜測網址。
+
 請使用 Markdown 格式排版，包含以下內容：
-1. **近期重大事件**：列出具體事件、時間點與消息來源（標註是外媒、社群或官方）。請註明消息來源（例如：根據 CNN 報導），但「絕對不要」在內文中產生任何 Markdown 網址連結（例如 [CNN 報導](https://...)），因為系統會自動在底部附上真實的來源連結。
+1. **近期重大事件**：列出具體事件。
+   - 格式：請具體寫出時間點與消息來源，並「強制標示該新聞的發布日期」（例如：根據 CNN 於 ${todayStr} 的報導）。
+   - 警告：「絕對不要」在內文中產生任何 Markdown 網址連結（例如 [CNN 報導](https://...)），因為系統會自動在底部附上真實的來源連結。
 2. **威脅評估**：分析這些行動對台灣的影響與威脅程度。
 3. **戰略意圖分析**：簡述背後可能的戰略或政治目的。
 
@@ -234,66 +275,33 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
   } catch (error: any) {
     lastError = error;
 
-    const isRateLimited = error?.message?.includes('429') || error?.status === 429 || error?.message?.includes('quota') || error?.message?.includes('Resource has been exhausted');
+    const isRateLimited = error?.message?.includes('429') || error?.status === 429;
+    const isDailyLimit = error?.message?.includes('quota') || error?.message?.includes('Resource has been exhausted');
+    const isInvalidKey = error?.message?.includes('API key not valid') || error?.message?.includes('API_KEY_INVALID') || error?.status === 400;
     
-    if (!isRateLimited) {
+    if (!isRateLimited && !isDailyLimit && !isInvalidKey) {
       console.error("Error fetching intelligence:", error);
     }
-  }
-
-  let errorMessage = "無法取得即時情報，請稍後再試。可能是因為 API 限制或網路問題。";
-  if (lastError?.message?.includes('429') || lastError?.status === 429 || lastError?.message?.includes('quota') || lastError?.message?.includes('Resource has been exhausted')) {
-    const isSearchQuota = lastError?.message?.includes('quota') || lastError?.message?.includes('Resource has been exhausted') || lastError?.message?.includes('per day');
-    const reasonText = isSearchQuota ? "（包含每日總額度或 Google 搜尋工具配額已耗盡）" : "（免費版 API 有嚴格的每分鐘頻率限制）";
     
     return {
-      text: `⚠️ **您的 API 金鑰請求次數已達上限 (Quota Exceeded)**\n\n您輸入的 API 金鑰已超出配額限制${reasonText}。請注意，Google 的頻率限制是跨網頁與應用程式計算的，請稍後再試，或更換其他金鑰。\n\n**原始錯誤訊息：**\n\`${lastError?.message || 'Unknown Error'}\``,
+      text: `⚠️ **無法取得資料**\n\n${isDailyLimit ? '已達每日 API 請求上限，請於太平洋時間午夜後重試。' : isRateLimited ? '已達每分鐘 API 請求上限，請稍後再試。' : isInvalidKey ? 'API 金鑰無效，請檢查您的設定。' : '發生未知錯誤，請稍後再試。'}`,
       sources: [],
-      isRateLimited: true,
-      isDailyLimit: isSearchQuota
+      isRateLimited: isRateLimited || isDailyLimit,
+      isDailyLimit,
+      isInvalidKey
     };
   }
-
-  if (lastError) {
-    errorMessage += `\n\n**錯誤細節：**\n\`${lastError.message || String(lastError)}\``;
-    
-    // If API key is invalid, trigger the modal
-    if (lastError?.message?.includes('API key not valid') || lastError?.message?.includes('API_KEY_INVALID')) {
-      return {
-        text: `⚠️ **API 金鑰無效**\n\n您輸入的 API 金鑰無效，請重新輸入。\n\n**原始錯誤訊息：**\n\`${lastError.message}\``,
-        sources: [],
-        isInvalidKey: true
-      };
-    }
-  }
-
-  return {
-    text: errorMessage,
-    sources: [],
-  };
-}
-
-export interface ThreatLevelData {
-  level: string;
-  summary: string;
-  totalScore?: number;
-  scores?: { military: number; economic: number; diplomatic: number; cognitive: number };
-  explanation?: string;
-  sources?: { title: string; uri: string }[];
-  isRateLimited?: boolean;
-  isDailyLimit?: boolean;
-  isInvalidKey?: boolean;
-  isMissingKey?: boolean;
-  timestamp?: number;
 }
 
 export async function fetchOverallThreatLevel(customApiKey?: string, forceRefresh = false): Promise<ThreatLevelData> {
-  const cleanApiKey = customApiKey?.replace(/[^a-zA-Z0-9_-]/g, '');
+  const cleanApiKey = customApiKey?.trim().replace(/[\s\uFEFF\xA0]/g, '').replace(/[^a-zA-Z0-9_-]/g, '');
   if (!cleanApiKey) {
-    return { 
-      level: 'UNKNOWN', 
-      summary: `請輸入自訂 API Key 以取得威脅等級。`, 
-      isMissingKey: true 
+    return {
+      level: 'UNKNOWN' as any,
+      totalScore: 0,
+      summary: '需要 API 金鑰以進行評估',
+      sources: [],
+      scores: { military: 0, economic: 0, diplomatic: 0, cognitive: 0 }
     };
   }
 
@@ -311,12 +319,17 @@ export async function fetchOverallThreatLevel(customApiKey?: string, forceRefres
   const yesterday = new Date();
   yesterday.setDate(yesterday.getDate() - 1);
   const yesterdayStr = yesterday.toISOString().split('T')[0];
+  const currentYear = new Date().getFullYear();
+  const currentMonth = new Date().getMonth() + 1;
 
-  const prompt = `現在時間是台灣時間 ${now}。
+  const prompt = `現在時間是台灣時間 ${now} (YYYY-MM-DD: ${todayStr})。
 請嚴格搜尋「今日（${todayStr}）或過去 24 小時內」關於台海局勢的新聞（包含國內外媒體及社群網路），評估目前的整體威脅等級。
-【極度重要警告】：
-1. 你的搜尋查詢「必須」加上時間過濾條件（例如加上 "after:${yesterdayStr}" 或 "when:1d"），確保只搜尋最新資訊。
-2. 請務必過濾掉舊新聞（例如 2024 年的「聯合利劍」演習等歷史事件），只採用發布日期為最近 24 小時內的資料。
+
+【🔴 絕對強制指令 - 違反將導致系統錯誤 🔴】：
+1. 搜尋策略：你呼叫 Google Search 工具時，搜尋關鍵字「必須」包含年份 "${currentYear}" 與月份 "${currentMonth}月"，並強烈建議加上 "when:1d" 或 "after:${yesterdayStr}"。
+2. 來源審查（極度重要）：在閱讀搜尋結果時，請「嚴格檢查」每篇文章的發布日期。任何超過 48 小時前發布的新聞、舊事件（如 2024 年的軍演、舊的選舉新聞等），必須「直接丟棄」，絕對不可作為評分依據，也不可作為 Verified Sources。
+3. 連結正確性：系統會自動抓取你參考的網頁作為 Verified Sources。請確保你只依賴「真實存在、且為最新發布」的搜尋結果。
+
 請依據以下四個面向給予 0~100 的威脅評分，並套用權重計算總分 (Total Score)：
 1. 軍事動態 (Military) - 權重 40%
 2. 經濟封鎖 (Economic) - 權重 25%
@@ -330,7 +343,19 @@ export async function fetchOverallThreatLevel(customApiKey?: string, forceRefres
 - 61~80: HIGH (高度威脅)
 - 81~100: CRITICAL (危急)
 
-請嚴格回傳 JSON 格式，不要包含 Markdown 語法或額外文字。`;
+請嚴格回傳 JSON 格式，不要包含 Markdown 語法或額外文字。
+JSON 格式範例：
+{
+  "level": "ELEVATED",
+  "totalScore": 55,
+  "summary": "簡短的整體威脅摘要（繁體中文）...",
+  "scores": {
+    "military": 60,
+    "economic": 40,
+    "diplomatic": 50,
+    "cognitive": 70
+  }
+}`;
 
   let lastError: any = null;
 
@@ -342,88 +367,58 @@ export async function fetchOverallThreatLevel(customApiKey?: string, forceRefres
       config: {
         tools: [{ googleSearch: {} }],
         temperature: 0.1,
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            level: {
-              type: Type.STRING,
-              description: "威脅等級，必須是以下之一：'CRITICAL', 'HIGH', 'ELEVATED', 'GUARDED', 'LOW'",
-            },
-            summary: {
-              type: Type.STRING,
-              description: "一句話總結目前局勢（繁體中文）",
-            },
-            totalScore: {
-              type: Type.NUMBER,
-              description: "加權計算後的總分 (0-100)",
-            },
-            scores: {
-              type: Type.OBJECT,
-              properties: {
-                military: { type: Type.NUMBER, description: "軍事動態評分 (0-100)" },
-                economic: { type: Type.NUMBER, description: "經濟封鎖評分 (0-100)" },
-                diplomatic: { type: Type.NUMBER, description: "外交打壓評分 (0-100)" },
-                cognitive: { type: Type.NUMBER, description: "認知作戰評分 (0-100)" }
-              },
-              required: ["military", "economic", "diplomatic", "cognitive"]
-            },
-            explanation: {
-              type: Type.STRING,
-              description: "等級判別說明與各面向評分理由（繁體中文）",
-            }
-          },
-          required: ["level", "summary", "totalScore", "scores", "explanation"]
-        }
+        responseMimeType: 'application/json',
       },
     }));
 
-    const data = JSON.parse(response.text || '{}');
-    
-    // Extract sources
+    const text = response.text || '{}';
+    let parsedData;
+    try {
+      parsedData = JSON.parse(text);
+    } catch (e) {
+      console.error("Failed to parse JSON response:", text);
+      throw new Error("Invalid JSON response from API");
+    }
+
     const groundingChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
     const sources = groundingChunks
-      .map((chunk: any) => ({
-        title: chunk.web?.title || '未知來源',
-        uri: chunk.web?.uri || '',
-      }))
+      .map((chunk: any) => {
+        return {
+          title: chunk.web?.title || '未知來源',
+          uri: chunk.web?.uri || '',
+        };
+      })
       .filter((s: any) => s.uri);
-    
+
     const uniqueSources = Array.from(new Map(sources.map((s: any) => [s.uri, s])).values()) as { title: string; uri: string }[];
-    data.sources = uniqueSources;
-    data.timestamp = Date.now();
-    
-    setLocalCache(cacheKey, data);
-    return data;
-  } catch (e: any) {
-    lastError = e;
 
-    const isRateLimited = e?.message?.includes('429') || e?.status === 429 || e?.message?.includes('quota') || e?.message?.includes('Resource has been exhausted');
+    const result: ThreatLevelData = {
+      ...parsedData,
+      sources: uniqueSources,
+      timestamp: Date.now(),
+    };
     
-    if (!isRateLimited) {
-      console.error("Error fetching threat level:", e);
+    setLocalCache(cacheKey, result);
+    return result;
+  } catch (error: any) {
+    lastError = error;
+    const isRateLimited = error?.message?.includes('429') || error?.status === 429;
+    const isDailyLimit = error?.message?.includes('quota') || error?.message?.includes('Resource has been exhausted');
+    const isInvalidKey = error?.message?.includes('API key not valid') || error?.message?.includes('API_KEY_INVALID') || error?.status === 400;
+    
+    if (!isRateLimited && !isDailyLimit && !isInvalidKey) {
+      console.error("Error fetching threat level:", error);
     }
-  }
-
-  if (lastError?.message?.includes('429') || lastError?.status === 429 || lastError?.message?.includes('quota') || lastError?.message?.includes('Resource has been exhausted')) {
-    const isSearchQuota = lastError?.message?.includes('quota') || lastError?.message?.includes('Resource has been exhausted') || lastError?.message?.includes('per day');
-    const reasonText = isSearchQuota ? "（每日總額度或 Google 搜尋工具配額已耗盡）" : "（每分鐘頻率限制）";
     
-    return { 
-      level: 'UNKNOWN', 
-      summary: `您的 API 金鑰已達請求上限${reasonText}。請稍後再試。`, 
-      isRateLimited: true,
-      isDailyLimit: isSearchQuota
+    return {
+      level: 'UNKNOWN' as any,
+      totalScore: 0,
+      summary: isDailyLimit ? '已達每日 API 請求上限' : isRateLimited ? '已達每分鐘 API 請求上限' : isInvalidKey ? 'API 金鑰無效' : '發生未知錯誤',
+      sources: [],
+      scores: { military: 0, economic: 0, diplomatic: 0, cognitive: 0 },
+      isRateLimited: isRateLimited || isDailyLimit,
+      isDailyLimit,
+      isInvalidKey
     };
   }
-
-  if (lastError?.message?.includes('API key not valid') || lastError?.message?.includes('API_KEY_INVALID')) {
-    return { 
-      level: 'UNKNOWN', 
-      summary: `API 金鑰無效，請重新輸入。`, 
-      isInvalidKey: true 
-    };
-  }
-
-  return { level: 'ELEVATED', summary: `無法取得即時威脅等級，請保持警戒。${lastError ? ` (${lastError.message || 'Unknown Error'})` : ''}` };
 }
