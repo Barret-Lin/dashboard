@@ -15,6 +15,14 @@ class ApiRateManager {
         this.cleanHistory();
       }
     } catch (e) {}
+
+    setInterval(() => {
+      const oldCount = this.callTimestamps.length;
+      this.cleanHistory();
+      if (this.callTimestamps.length !== oldCount) {
+        this.notify();
+      }
+    }, 1000);
   }
 
   private cleanHistory() {
