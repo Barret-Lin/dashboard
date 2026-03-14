@@ -516,11 +516,12 @@ export async function fetchTimelineEvents(customApiKey?: string, forceRefresh = 
 請扮演頂尖的開源情報（OSINT）分析師。你的任務是搜尋「過去一週（台灣時間 ${lastWeekStr} 至 ${todayStr}）」關於台海局勢的重大新聞與事件。
 
 【🔴 絕對強制指令 🔴】：
-1. 搜尋策略：你呼叫 Google Search 工具時，必須搜尋過去一週內關於台海軍事、經濟、外交、認知作戰的真實重大事件。
-2. 來源網址 (url) 必須是「真實存在」且「直接連到該篇新聞」的絕對網址。**絕對禁止**捏造網址或只提供媒體首頁。你必須從 Google Search 的結果中，精確複製該新聞的真實 URL。如果找不到直接連結，請不要將該事件納入。
-3. 請嚴格回傳 JSON 格式，不要包含 Markdown 語法或額外文字。
-4. 請確保事件按時間先後順序排列（最舊的在前面，最新的在後面）。
-5. 每個事件必須評估其影響力等級 (impactLevel)，範圍為 1 到 10 的整數（10 為最高威脅/影響）。
+1. 搜尋策略：你呼叫 Google Search 工具時，必須搜尋過去一週內關於台海軍事、經濟、外交、認知作戰的真實重大事件。為了確保連結有效，請優先搜尋台灣主流媒體（如 CNA 中央社、LTN 自由時報、UDN 聯合報、Yahoo 新聞）。
+2. 來源網址 (url) 必須是「真實存在」且「直接連到該篇新聞」的絕對網址。**絕對禁止**捏造網址、提供媒體首頁、或提供需要付費/登入才能觀看的連結。
+3. 你必須從 Google Search 的結果 (Grounding Sources) 中，精確複製該新聞的真實 URL。如果該事件找不到直接且公開的連結，請**直接捨棄**該事件，不要將其納入。
+4. 請嚴格回傳 JSON 格式，不要包含 Markdown 語法或額外文字。
+5. 請確保事件按時間先後順序排列（最舊的在前面，最新的在後面）。
+6. 每個事件必須評估其影響力等級 (impactLevel)，範圍為 1 到 10 的整數（10 為最高威脅/影響）。
 
 JSON 格式範例：
 [
@@ -528,17 +529,9 @@ JSON 格式範例：
     "date": "2026-03-08",
     "title": "共機越過海峽中線",
     "description": "國防部偵獲多架次共機越過海峽中線...",
-    "url": "[請填入真實新聞網址，例如 https://www.cna.com.tw/news/12345.aspx]",
+    "url": "https://www.cna.com.tw/news/aipl/202603080001.aspx",
     "category": "military",
     "impactLevel": 8
-  },
-  {
-    "date": "2026-03-10",
-    "title": "中國宣布新一波農產品禁令",
-    "description": "中國海關總署宣布暫停進口台灣某農產品...",
-    "url": "[請填入真實新聞網址，例如 https://news.ltn.com.tw/news/12345]",
-    "category": "economic",
-    "impactLevel": 5
   }
 ]`;
 
@@ -569,44 +562,57 @@ JSON 格式範例：
       .filter((s: any) => s.uri);
 
     // Validate and fix URLs
+    // We only keep events that have a highly confident URL match
     eventsArray = eventsArray.map((event: TimelineEvent) => {
       if (event.url) {
-        // Check if the URL is a placeholder or not in the valid sources
         const isPlaceholder = event.url.includes('[') || event.url.includes('example.com');
         const isUrlValid = validSources.some((s: any) => s.uri === event.url);
         
-        if (isPlaceholder || (!isUrlValid && validSources.length > 0)) {
-          // Try to find a matching source by title or description
-          const matchingSource = validSources.find((s: any) => 
-            event.title.includes(s.title) || s.title.includes(event.title) ||
-            event.description.includes(s.title) || s.title.includes(event.description)
-          );
-          
-          if (matchingSource) {
-            event.url = matchingSource.uri;
-          } else if (!isPlaceholder) {
-            // Try to find any source that shares the same domain
-            try {
-              const eventDomain = new URL(event.url).hostname;
-              const domainMatch = validSources.find((s: any) => s.uri.includes(eventDomain));
-              if (domainMatch) {
-                event.url = domainMatch.uri;
-              } else if (validSources.length > 0) {
-                // If all else fails, use the first valid source as a fallback
-                event.url = validSources[0].uri;
-              }
-            } catch (e) {
-              if (validSources.length > 0) event.url = validSources[0].uri;
+        if (isPlaceholder || !isUrlValid) {
+          // If the URL is not exactly in the grounding sources, we try to find a strong match
+          // A strong match means the title or description shares significant keywords with the source title
+          let bestMatch = null;
+          let highestScore = 0;
+
+          for (const source of validSources) {
+            let score = 0;
+            const sourceTitleLower = source.title.toLowerCase();
+            const eventTitleLower = event.title.toLowerCase();
+            
+            // Exact or partial title match
+            if (sourceTitleLower.includes(eventTitleLower) || eventTitleLower.includes(sourceTitleLower)) {
+              score += 10;
             }
-          } else if (validSources.length > 0) {
-            event.url = validSources[0].uri;
-          } else if (isPlaceholder) {
+
+            // Keyword matching
+            const keywords = event.title.split(/[\s,，。、]+/).filter(k => k.length > 1);
+            for (const keyword of keywords) {
+              if (sourceTitleLower.includes(keyword.toLowerCase())) {
+                score += 2;
+              }
+            }
+
+            if (score > highestScore) {
+              highestScore = score;
+              bestMatch = source;
+            }
+          }
+          
+          // Only accept the match if the score is high enough (at least some keywords matched)
+          if (bestMatch && highestScore >= 4) {
+            event.url = bestMatch.uri;
+          } else {
+            // If we can't find a strong match, it's better to have no URL than a wrong one
             event.url = undefined;
           }
         }
       }
       return event;
     });
+
+    // Filter out events that ended up with no URL if we want to be strict, 
+    // but keeping them without a URL is better than showing a wrong URL.
+    // Let's just keep them without URL so the UI doesn't make them clickable.
 
     setLocalCache(cacheKey, eventsArray);
     return eventsArray as TimelineEvent[];
