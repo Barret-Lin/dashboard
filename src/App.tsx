@@ -58,10 +58,21 @@ const CopyableMarkdownLink = React.memo(function CopyableMarkdownLink({ href, ch
 
   return (
     <span className="inline-flex items-center gap-1 align-middle">
-      <a href={href} {...props} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:text-blue-300 underline">
+      <a 
+        href={href} 
+        {...props} 
+        target={href === '#' ? undefined : "_blank"} 
+        rel={href === '#' ? undefined : "noopener noreferrer"} 
+        className={href === '#' ? "text-zinc-400 cursor-not-allowed underline decoration-dotted" : "text-blue-400 hover:text-blue-300 underline"}
+        onClick={(e) => {
+          if (href === '#') {
+            e.preventDefault();
+          }
+        }}
+      >
         {children}
       </a>
-      {href && (
+      {href && href !== '#' && (
         <button
           onClick={handleCopy}
           className="p-1 rounded text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 transition-colors inline-flex items-center justify-center"
