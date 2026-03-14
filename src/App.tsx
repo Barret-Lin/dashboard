@@ -10,6 +10,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
 import { fetchIntelligence, fetchOverallThreatLevel, IntelligenceData, ThreatLevelData, apiRateManager } from './services/intelligenceService';
 import { SatelliteMaps } from './components/SatelliteMaps';
+import { TimelineView } from './components/TimelineView';
 
 const CATEGORIES = [
   { id: 'new_threat', name: '本日最新威脅情資', icon: Flame, query: '綜合威脅情資、重大事件總結' },
@@ -441,7 +442,19 @@ export default function App() {
                             {updatedTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                           </span>
                         )}
-                        {loading[cat.id] && <Activity className="w-4 h-4 animate-pulse text-zinc-500" />}
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (!isRateLimited) {
+                              loadIntelligence(cat.id, true);
+                            }
+                          }}
+                          disabled={loading[cat.id] || isRateLimited}
+                          className="p-1 hover:bg-zinc-800 rounded transition-colors disabled:opacity-50"
+                          title="重新載入此項目"
+                        >
+                          <RefreshCw className={`w-3 h-3 text-zinc-500 ${loading[cat.id] ? 'animate-spin text-blue-500' : 'hover:text-zinc-300'}`} />
+                        </button>
                       </div>
                     </div>
                     {(loading[cat.id] || loadingDuration[cat.id] !== undefined) && (
@@ -543,6 +556,8 @@ export default function App() {
           </div>
 
         </div>
+        
+        <TimelineView apiKey={customApiKey} isPaidApiKey={isPaidApiKey} />
       </div>
 
       {/* API Key Input Modal */}

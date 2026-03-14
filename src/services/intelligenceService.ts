@@ -486,6 +486,77 @@ export interface MapData {
   }[];
 }
 
+export interface TimelineEvent {
+  date: string;
+  title: string;
+  description: string;
+  category: 'military' | 'economic' | 'diplomatic' | 'cognitive' | 'other';
+}
+
+export async function fetchTimelineEvents(customApiKey?: string, forceRefresh = false, isPaidKey = false): Promise<TimelineEvent[]> {
+  const cleanApiKey = customApiKey?.trim().replace(/[\s\uFEFF\xA0]/g, '').replace(/[^a-zA-Z0-9_-]/g, '');
+  if (!cleanApiKey) return [];
+
+  const cacheKey = `timeline_${cleanApiKey || 'default'}`;
+  
+  if (!forceRefresh) {
+    const cachedData = getLocalCache(cacheKey);
+    if (cachedData) {
+      return cachedData as TimelineEvent[];
+    }
+  }
+
+  const now = new Date().toLocaleString('zh-TW', { timeZone: 'Asia/Taipei', hour12: false });
+  const todayStr = getTaipeiDateString(0);
+  const lastWeekStr = getTaipeiDateString(-7);
+
+  const prompt = `現在精確時間是台灣時間 ${now} (YYYY-MM-DD: ${todayStr})。
+請扮演頂尖的開源情報（OSINT）分析師。你的任務是搜尋「過去一週（台灣時間 ${lastWeekStr} 至 ${todayStr}）」關於台海局勢的重大新聞與事件。
+
+【🔴 絕對強制指令 🔴】：
+1. 搜尋策略：你呼叫 Google Search 工具時，必須搜尋過去一週內關於台海軍事、經濟、外交、認知作戰的重大事件。
+2. 請嚴格回傳 JSON 格式，不要包含 Markdown 語法或額外文字。
+3. 請確保事件按時間先後順序排列（最舊的在前面，最新的在後面）。
+
+JSON 格式範例：
+[
+  {
+    "date": "2026-03-08",
+    "title": "共機越過海峽中線",
+    "description": "國防部偵獲多架次共機越過海峽中線...",
+    "category": "military"
+  },
+  {
+    "date": "2026-03-10",
+    "title": "中國宣布新一波農產品禁令",
+    "description": "中國海關總署宣布暫停進口台灣某農產品...",
+    "category": "economic"
+  }
+]`;
+
+  const ai = new GoogleGenAI({ apiKey: cleanApiKey });
+  try {
+    const response = await executeWithLock(() => ai.models.generateContent({
+      model: 'gemini-3-flash-preview',
+      contents: prompt,
+      config: {
+        tools: [{ googleSearch: {} }],
+        temperature: 0.1,
+        responseMimeType: 'application/json',
+      },
+    }), isPaidKey);
+
+    const text = response.text || '[]';
+    const parsedData = JSON.parse(text);
+    
+    setLocalCache(cacheKey, parsedData);
+    return parsedData as TimelineEvent[];
+  } catch (error) {
+    console.error("Error fetching timeline events:", error);
+    return [];
+  }
+}
+
 export async function fetchMapData(customApiKey?: string, forceRefresh = false, isPaidKey = false): Promise<MapData | null> {
   const cleanApiKey = customApiKey?.trim().replace(/[\s\uFEFF\xA0]/g, '').replace(/[^a-zA-Z0-9_-]/g, '');
   if (!cleanApiKey) return null;
