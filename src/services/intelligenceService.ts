@@ -205,6 +205,7 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
   const now = new Date().toLocaleString('zh-TW', { timeZone: 'Asia/Taipei', hour12: false });
   const todayStr = getTaipeiDateString(0);
   const yesterdayStr = getTaipeiDateString(-1);
+  const tomorrowStr = getTaipeiDateString(1);
   const lastWeekStr = getTaipeiDateString(-7);
   
   const d = new Date();
@@ -220,7 +221,7 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
 【注意】：已取消「過去24小時」的定義，請嚴格只抓取「當日」的資料。
 
 【🔴 絕對強制指令 - 違反將導致系統錯誤 🔴】：
-1. 搜尋策略：你呼叫 Google Search 工具時，搜尋關鍵字「必須」包含年份 "${currentYear}" 與月份 "${currentMonth}月" 以及日期 "${todayStr}"，並強制加上 "when:1d" 參數。
+1. 搜尋策略：你呼叫 Google Search 工具時，搜尋關鍵字「必須」包含年份 "${currentYear}" 與月份 "${currentMonth}月" 以及日期 "${todayStr}"，並強制加上 "after:${yesterdayStr} before:${tomorrowStr}" 參數，以確保搜尋引擎只回傳當日的結果。
 2. 來源審查（極度重要）：在閱讀搜尋結果時，請「嚴格檢查」每篇文章的發布精確時間。不在定義抓取資料時間週期內（非 ${todayStr} 當日）的來源需「嚴格全部捨棄」，絕對不可寫入報告，也不可作為 Verified Sources。
 3. 寧缺勿濫：如果搜尋後發現「沒有」當日的最新重大消息，請直接回答「當日無重大事件」，絕對不允許拿舊新聞來湊數。
 4. 連結正確性：系統會自動抓取你參考的網頁作為 Verified Sources。請確保你只依賴「真實存在、且為最新發布」的搜尋結果，不要自己發明或猜測網址。
@@ -238,7 +239,7 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
 請扮演頂尖的開源情報（OSINT）分析師。你的任務是彙整「過去一週內（台灣時間 ${lastWeekStr} 00:00 至 ${todayStr} 23:59）」關於中國對台灣的「${categoryQuery}」最新動態與新聞。
 
 【🔴 絕對強制指令 - 違反將導致系統錯誤 🔴】：
-1. 搜尋策略：你呼叫 Google Search 工具時，搜尋關鍵字「必須」包含年份 "${currentYear}" 與月份 "${currentMonth}月"，並強制加上 "when:7d" 參數，確保只獲取過去一週內的資料。
+1. 搜尋策略：你呼叫 Google Search 工具時，搜尋關鍵字「必須」包含年份 "${currentYear}" 與月份 "${currentMonth}月"，並強制加上 "after:${lastWeekStr} before:${tomorrowStr}" 參數，確保只獲取過去一週內的資料。
 2. 來源審查（極度重要）：在閱讀搜尋結果時，請「嚴格檢查」每篇文章的發布精確時間。不在定義抓取資料時間週期內（${lastWeekStr} 至 ${todayStr}）的來源需「嚴格全部捨棄」，絕對不可寫入報告，也不可作為 Verified Sources。
 3. 寧缺勿濫：如果搜尋後發現「沒有」過去一週內的最新重大消息，請直接回答「過去一週無重大事件」，絕對不允許拿舊新聞來湊數。
 4. 連結正確性：系統會自動抓取你參考的網頁作為 Verified Sources。請確保你只依賴「真實存在、且為最新發布」的搜尋結果，不要自己發明或猜測網址。
@@ -267,9 +268,21 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
     }));
 
     const text = response.text || '';
-    const groundingChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
+    const groundingMetadata = response.candidates?.[0]?.groundingMetadata;
+    const groundingChunks = groundingMetadata?.groundingChunks || [];
+    const groundingSupports = groundingMetadata?.groundingSupports || [];
+
+    const usedChunkIndices = new Set<number>();
+    if (groundingSupports.length > 0) {
+      groundingSupports.forEach((support: any) => {
+        if (support.groundingChunkIndices) {
+          support.groundingChunkIndices.forEach((index: number) => usedChunkIndices.add(index));
+        }
+      });
+    }
 
     const sources = groundingChunks
+      .filter((_: any, index: number) => usedChunkIndices.has(index))
       .map((chunk: any) => {
         return {
           title: chunk.web?.title || '未知來源',
@@ -331,6 +344,7 @@ export async function fetchOverallThreatLevel(customApiKey?: string, forceRefres
 
   const now = new Date().toLocaleString('zh-TW', { timeZone: 'Asia/Taipei', hour12: false });
   const todayStr = getTaipeiDateString(0);
+  const tomorrowStr = getTaipeiDateString(1);
   const lastWeekStr = getTaipeiDateString(-7);
   
   const d = new Date();
@@ -343,7 +357,7 @@ export async function fetchOverallThreatLevel(customApiKey?: string, forceRefres
 請嚴格搜尋「過去一週內（台灣時間 ${lastWeekStr} 00:00 至 ${todayStr} 23:59）」關於台海局勢的新聞（包含國內外媒體及社群網路），評估目前的整體威脅等級。
 
 【🔴 絕對強制指令 - 違反將導致系統錯誤 🔴】：
-1. 搜尋策略：你呼叫 Google Search 工具時，搜尋關鍵字「必須」包含年份 "${currentYear}" 與月份 "${currentMonth}月"，並強制加上 "when:7d" 參數，確保只獲取過去一週內的資料。
+1. 搜尋策略：你呼叫 Google Search 工具時，搜尋關鍵字「必須」包含年份 "${currentYear}" 與月份 "${currentMonth}月"，並強制加上 "after:${lastWeekStr} before:${tomorrowStr}" 參數，確保只獲取過去一週內的資料。
 2. 來源審查（極度重要）：在閱讀搜尋結果時，請「嚴格檢查」每篇文章的發布精確時間。不在定義抓取資料時間週期內（${lastWeekStr} 至 ${todayStr}）的來源需「嚴格全部捨棄」，絕對不可作為評分依據，也不可作為 Verified Sources。
 3. 連結正確性：系統會自動抓取你參考的網頁作為 Verified Sources。請確保你只依賴「真實存在、且為最新發布」的搜尋結果。
 
@@ -397,8 +411,21 @@ JSON 格式範例：
       throw new Error("Invalid JSON response from API");
     }
 
-    const groundingChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
+    const groundingMetadata = response.candidates?.[0]?.groundingMetadata;
+    const groundingChunks = groundingMetadata?.groundingChunks || [];
+    const groundingSupports = groundingMetadata?.groundingSupports || [];
+
+    const usedChunkIndices = new Set<number>();
+    if (groundingSupports.length > 0) {
+      groundingSupports.forEach((support: any) => {
+        if (support.groundingChunkIndices) {
+          support.groundingChunkIndices.forEach((index: number) => usedChunkIndices.add(index));
+        }
+      });
+    }
+
     const sources = groundingChunks
+      .filter((_: any, index: number) => usedChunkIndices.has(index))
       .map((chunk: any) => {
         return {
           title: chunk.web?.title || '未知來源',
@@ -473,12 +500,13 @@ export async function fetchMapData(customApiKey?: string, forceRefresh = false):
   const now = new Date().toLocaleString('zh-TW', { timeZone: 'Asia/Taipei', hour12: false });
   const todayStr = getTaipeiDateString(0);
   const yesterdayStr = getTaipeiDateString(-1);
+  const tomorrowStr = getTaipeiDateString(1);
 
   const prompt = `現在精確時間是台灣時間 ${now} (YYYY-MM-DD: ${todayStr})。
 請扮演頂尖的開源情報（OSINT）分析師。你的任務是搜尋「國防部 臺海周邊海、空域動態」的「當日（台灣時間 ${todayStr} 00:00 至 23:59）、即時」最新發布資料，以及中國海事局最新的「航行警告 / 禁航區 / 演習」公告。
 
 【🔴 絕對強制指令 🔴】：
-1. 搜尋策略：請搜尋 "${todayStr} 國防部 臺海周邊海 空域動態"，強制獲取當日發布的資料。
+1. 搜尋策略：請搜尋 "${todayStr} 國防部 臺海周邊海 空域動態"，強制獲取當日發布的資料。並強制加上 "after:${yesterdayStr} before:${tomorrowStr}" 參數，以確保搜尋引擎只回傳當日的結果。
 2. 來源審查（極度重要）：在閱讀搜尋結果時，請「嚴格檢查」每篇文章的發布精確時間。不在定義抓取資料時間週期內（非 ${todayStr} 當日）的來源需「嚴格全部捨棄」，絕對不可採用。
 3. 必須回傳純 JSON 格式，絕對不要包含 Markdown 語法 (如 \`\`\`json) 或其他文字。
 
