@@ -344,8 +344,8 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
       groundingSupports.forEach((support: any) => {
         const sStart = support.segment?.startIndex || 0;
         const sEnd = support.segment?.endIndex || 0;
-        // Check for overlap or proximity (within 100 chars)
-        if ((sStart <= end + 100) && (sEnd >= start - 100)) {
+        // Check for strict overlap
+        if (sStart <= end && sEnd >= start) {
           const indices = support.groundingChunkIndices || [];
           indices.forEach((i: number) => {
             const uri = groundingChunks[i]?.web?.uri;
@@ -359,7 +359,17 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
     processedText = processedText.replace(markdownLinkRegex, (match, linkText, url, offset) => {
       const cleanUrl = url.trim();
       
-      // 1. If the URL is already a valid URL and in grounding chunks, keep it
+      // 1. Try to find the URL from grounding supports strictly overlapping with this link
+      const overlappingUris = getUrisForRange(offset, offset + match.length);
+      if (overlappingUris.length > 0) {
+        // If the AI's provided URL is in the overlapping URIs, prefer it
+        if (overlappingUris.includes(cleanUrl)) {
+          return `[${linkText}](${cleanUrl})`;
+        }
+        return `[${linkText}](${overlappingUris[0]})`;
+      }
+
+      // 2. If the URL is already a valid URL and in grounding chunks, keep it
       if (cleanUrl.startsWith('http')) {
         const isUrlInChunks = groundingChunks.some((c: any) => {
           const chunkUri = c.web?.uri;
@@ -372,12 +382,6 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
         }
       }
 
-      // 2. Try to find the URL from grounding supports overlapping with this link
-      const overlappingUris = getUrisForRange(offset, offset + match.length);
-      if (overlappingUris.length > 0) {
-        return `[${linkText}](${overlappingUris[0]})`;
-      }
-
       // 3. Match by title/media name
       let bestMatch = uniqueAllSources.find(s => 
         linkText.includes(s.title) || s.title.includes(linkText) || 
@@ -388,14 +392,7 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
         return `[${linkText}](${bestMatch.uri})`;
       }
       
-      // 4. Fallback to the first available source if we have one
-      if (uniqueSources.length > 0) {
-        return `[${linkText}](${uniqueSources[0].uri})`;
-      } else if (uniqueAllSources.length > 0) {
-        return `[${linkText}](${uniqueAllSources[0].uri})`;
-      }
-
-      // 5. If it was a valid-looking URL, just trust it
+      // 4. If it was a valid-looking URL, just trust it
       if (cleanUrl.startsWith('http') && !cleanUrl.includes('example.com') && !cleanUrl.includes('SOURCE_URL')) {
         return `[${linkText}](${cleanUrl})`;
       }
@@ -405,7 +402,14 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
 
     // Also try to match plain text brackets like [2026-03-14 中央社] or [1] that are not followed by (url)
     const plainBracketRegex = /\[(\d{4}-\d{2}-\d{2}[^\]]*|\d+)\](?!\()/g;
-    processedText = processedText.replace(plainBracketRegex, (match, linkText) => {
+    processedText = processedText.replace(plainBracketRegex, (match, linkText, offset) => {
+      // 1. Try to find the URL from grounding supports strictly overlapping with this link
+      const overlappingUris = getUrisForRange(offset, offset + match.length);
+      if (overlappingUris.length > 0) {
+        return `[${linkText}](${overlappingUris[0]})`;
+      }
+
+      // 2. Match by title
       let bestMatch = uniqueAllSources.find(s => 
         linkText.includes(s.title) || s.title.includes(linkText) || 
         (s.title && linkText.split(/[\s,，。、]+/).some(word => word.length > 1 && s.title.includes(word)))
@@ -413,12 +417,6 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
       
       if (bestMatch) {
         return `[${linkText}](${bestMatch.uri})`;
-      }
-      
-      if (uniqueSources.length > 0) {
-        return `[${linkText}](${uniqueSources[0].uri})`;
-      } else if (uniqueAllSources.length > 0) {
-        return `[${linkText}](${uniqueAllSources[0].uri})`;
       }
       
       return `[${linkText}](#)`;
