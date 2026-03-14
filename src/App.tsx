@@ -347,7 +347,7 @@ export default function App() {
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
                 <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
               </div>
-              <h1 className="text-3xl font-bold tracking-tight text-zinc-100 uppercase font-mono">台海戰情即時情報網 <span className="text-xs text-zinc-600 font-mono ml-2">v2.8</span></h1>
+              <h1 className="text-3xl font-bold tracking-tight text-zinc-100 uppercase font-mono">台海戰情即時情報網 <span className="text-xs text-zinc-600 font-mono ml-2">v3.0</span></h1>
             </div>
             <div className="flex items-center gap-4">
               <p className="text-zinc-500 font-mono text-[10px] tracking-widest uppercase flex items-center gap-2">
@@ -776,19 +776,19 @@ export default function App() {
                     <h3 className="text-sm font-mono text-zinc-500 uppercase tracking-wider mb-3">Dimension Scores (權重評分)</h3>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
                       <div className="bg-[#111] p-3 tech-border text-center">
-                        <div className="text-xs text-zinc-400 mb-1">軍事 (40%)</div>
+                        <div className="text-xs text-zinc-400 mb-1">軍事 (60%)</div>
                         <div className="text-3xl font-bold font-mono text-red-400">{threatLevel.scores.military}</div>
                       </div>
                       <div className="bg-[#111] p-3 tech-border text-center">
-                        <div className="text-xs text-zinc-400 mb-1">經濟 (25%)</div>
+                        <div className="text-xs text-zinc-400 mb-1">經濟 (20%)</div>
                         <div className="text-3xl font-bold font-mono text-orange-400">{threatLevel.scores.economic}</div>
                       </div>
                       <div className="bg-[#111] p-3 tech-border text-center">
-                        <div className="text-xs text-zinc-400 mb-1">外交 (20%)</div>
+                        <div className="text-xs text-zinc-400 mb-1">外交 (10%)</div>
                         <div className="text-3xl font-bold font-mono text-blue-400">{threatLevel.scores.diplomatic}</div>
                       </div>
                       <div className="bg-[#111] p-3 tech-border text-center">
-                        <div className="text-xs text-zinc-400 mb-1">認知 (15%)</div>
+                        <div className="text-xs text-zinc-400 mb-1">認知 (10%)</div>
                         <div className="text-3xl font-bold font-mono text-purple-400">{threatLevel.scores.cognitive}</div>
                       </div>
                     </div>
