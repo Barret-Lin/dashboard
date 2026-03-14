@@ -128,8 +128,18 @@ export default function App() {
   const [threatLoading, setThreatLoading] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [categoryUpdated, setCategoryUpdated] = useState<Record<string, Date>>({});
+  const [currentTime, setCurrentTime] = useState<Date>(new Date());
+  const [loadingStartTime, setLoadingStartTime] = useState<Record<string, Date>>({});
+  const [loadingDuration, setLoadingDuration] = useState<Record<string, number>>({});
   const [autoRefresh, setAutoRefresh] = useState(false);
   const [showThreatDetails, setShowThreatDetails] = useState(false);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setCurrentTime(new Date());
+    }, 1000);
+    return () => clearInterval(interval);
+  }, []);
 
   const [customApiKey, setCustomApiKey] = useState(() => {
     try {
@@ -205,7 +215,15 @@ export default function App() {
   const loadIntelligence = async (categoryId: string, force = false, keyOverride?: string, isPaidOverride?: boolean) => {
     if (!force && intelligence[categoryId]) return;
     
+    const startTime = new Date();
     setLoading(prev => ({ ...prev, [categoryId]: true }));
+    setLoadingStartTime(prev => ({ ...prev, [categoryId]: startTime }));
+    setLoadingDuration(prev => {
+      const next = { ...prev };
+      delete next[categoryId];
+      return next;
+    });
+
     try {
       const category = CATEGORIES.find(c => c.id === categoryId);
       if (category) {
@@ -232,6 +250,13 @@ export default function App() {
     } catch (e) {
       console.error(e);
     } finally {
+      const endTime = new Date();
+      setLoadingDuration(prev => ({ ...prev, [categoryId]: endTime.getTime() - startTime.getTime() }));
+      setLoadingStartTime(prev => {
+        const next = { ...prev };
+        delete next[categoryId];
+        return next;
+      });
       setLoading(prev => ({ ...prev, [categoryId]: false }));
     }
   };
@@ -398,25 +423,47 @@ export default function App() {
                     }}
                     disabled={isRateLimited}
                     title={isRateLimited ? "API 呼叫頻率過高，請稍後再試" : ""}
-                    className={`shrink-0 lg:w-full flex flex-col lg:flex-row lg:items-center gap-2 lg:gap-3 px-4 py-3 text-left transition-all duration-200 font-mono text-sm uppercase disabled:opacity-50 disabled:cursor-not-allowed ${
+                    className={`shrink-0 lg:w-full flex flex-col gap-1 px-4 py-3 text-left transition-all duration-200 font-mono text-sm uppercase disabled:opacity-50 disabled:cursor-not-allowed ${
                       isActive 
                         ? 'bg-[#1a1a1a] text-zinc-100 tech-border border-l-2 border-l-red-500' 
                         : 'text-zinc-500 hover:bg-[#0f0f0f] hover:text-zinc-300 border border-transparent'
                     }`}
                   >
-                    <div className="flex items-center gap-2">
-                      <Icon className={`w-5 h-5 ${isActive ? 'text-red-500' : ''}`} />
-                      <span className="font-medium whitespace-nowrap">{cat.name}</span>
+                    <div className="flex items-center justify-between w-full">
+                      <div className="flex items-center gap-2">
+                        <Icon className={`w-5 h-5 ${isActive ? 'text-red-500' : ''}`} />
+                        <span className="font-medium whitespace-nowrap">{cat.name}</span>
+                      </div>
+                      
+                      <div className="flex items-center gap-2">
+                        {updatedTime && (
+                          <span className="text-[10px] font-mono text-zinc-500 whitespace-nowrap">
+                            {updatedTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        )}
+                        {loading[cat.id] && <Activity className="w-4 h-4 animate-pulse text-zinc-500" />}
+                      </div>
                     </div>
-                    
-                    <div className="flex items-center justify-between w-full lg:w-auto lg:ml-auto gap-2">
-                      {updatedTime && (
-                        <span className="text-[10px] font-mono text-zinc-500 whitespace-nowrap">
-                          {updatedTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    {(loading[cat.id] || loadingDuration[cat.id] !== undefined) && (
+                      <div className="text-[10px] font-mono text-zinc-600 ml-7 flex items-center gap-1">
+                        <Clock className={`w-3 h-3 ${loading[cat.id] ? 'animate-pulse text-blue-500' : ''}`} />
+                        <span className={loading[cat.id] ? 'text-blue-500' : ''}>
+                          {(() => {
+                            if (loading[cat.id] && loadingStartTime[cat.id]) {
+                              const elapsed = Math.max(0, currentTime.getTime() - loadingStartTime[cat.id].getTime());
+                              return `${Math.floor(elapsed / 60000).toString().padStart(2, '0')}:${(Math.floor(elapsed / 1000) % 60).toString().padStart(2, '0')}`;
+                            } else if (loadingDuration[cat.id] !== undefined) {
+                              const duration = loadingDuration[cat.id];
+                              return `${Math.floor(duration / 60000).toString().padStart(2, '0')}:${(Math.floor(duration / 1000) % 60).toString().padStart(2, '0')}`;
+                            }
+                            return '00:00';
+                          })()}
                         </span>
-                      )}
-                      {loading[cat.id] && <Activity className="w-4 h-4 animate-pulse text-zinc-500" />}
-                    </div>
+                        {!loading[cat.id] && loadingDuration[cat.id] !== undefined && (
+                          <span className="text-[9px] ml-1 opacity-70">載入耗時</span>
+                        )}
+                      </div>
+                    )}
                   </button>
                 );
               })}
