@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { Crosshair, TrendingDown, Globe, RefreshCw, AlertTriangle, ExternalLink, Radar, Clock, Flame, Key, Lock, Unlock, Copy, Check, Activity, Eye, EyeOff } from 'lucide-react';
+import { Crosshair, TrendingDown, Globe, RefreshCw, AlertTriangle, ExternalLink, Radar, Clock, Flame, Key, Lock, Unlock, Copy, Check, Activity, Eye, EyeOff, ChevronDown, ChevronUp } from 'lucide-react';
 import Markdown from 'react-markdown';
 import { motion, AnimatePresence } from 'motion/react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
@@ -117,6 +117,50 @@ const MemoizedMarkdown = React.memo(function MemoizedMarkdown({ children }: { ch
       >
         {children}
       </Markdown>
+    </div>
+  );
+});
+
+const VerifiedSources = React.memo(function VerifiedSources({ sources }: { sources: { title: string; uri: string }[] }) {
+  const [isExpanded, setIsExpanded] = useState(false);
+
+  if (!sources || sources.length === 0) return null;
+
+  return (
+    <div className="mt-8 pt-6 border-t border-zinc-800">
+      <button 
+        onClick={() => setIsExpanded(!isExpanded)}
+        className="flex items-center justify-between w-full text-left group"
+      >
+        <h4 className="text-xs font-mono text-zinc-500 uppercase tracking-wider flex items-center gap-2 group-hover:text-zinc-300 transition-colors">
+          <ExternalLink className="w-4 h-4" />
+          Verified Sources ({sources.length})
+        </h4>
+        {isExpanded ? (
+          <ChevronUp className="w-4 h-4 text-zinc-500 group-hover:text-zinc-300 transition-colors" />
+        ) : (
+          <ChevronDown className="w-4 h-4 text-zinc-500 group-hover:text-zinc-300 transition-colors" />
+        )}
+      </button>
+      
+      <AnimatePresence>
+        {isExpanded && (
+          <motion.div
+            initial={{ height: 0, opacity: 0, marginTop: 0 }}
+            animate={{ height: 'auto', opacity: 1, marginTop: 16 }}
+            exit={{ height: 0, opacity: 0, marginTop: 0 }}
+            className="overflow-hidden"
+          >
+            <ul className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {sources.map((source, idx) => (
+                <li key={idx}>
+                  <CopyableSourceCard source={source} />
+                </li>
+              ))}
+            </ul>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 });
@@ -303,7 +347,7 @@ export default function App() {
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
                 <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
               </div>
-              <h1 className="text-3xl font-bold tracking-tight text-zinc-100 uppercase font-mono">台海戰情即時情報網 <span className="text-xs text-zinc-600 font-mono ml-2">v2.2</span></h1>
+              <h1 className="text-3xl font-bold tracking-tight text-zinc-100 uppercase font-mono">台海戰情即時情報網 <span className="text-xs text-zinc-600 font-mono ml-2">v2.4</span></h1>
             </div>
             <div className="flex items-center gap-4">
               <p className="text-zinc-500 font-mono text-[10px] tracking-widest uppercase flex items-center gap-2">
@@ -530,21 +574,7 @@ export default function App() {
                       <MemoizedMarkdown>{activeData.text}</MemoizedMarkdown>
 
                       {/* Sources Section */}
-                      {activeData.sources.length > 0 && (
-                        <div className="mt-8 pt-6 border-t border-zinc-800">
-                          <h4 className="text-xs font-mono text-zinc-500 uppercase tracking-wider mb-4 flex items-center gap-2">
-                            <ExternalLink className="w-4 h-4" />
-                            Verified Sources
-                          </h4>
-                          <ul className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                            {activeData.sources.map((source, idx) => (
-                              <li key={idx}>
-                                <CopyableSourceCard source={source} />
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                      )}
+                      <VerifiedSources sources={activeData.sources} />
                     </motion.div>
                   ) : (
                     <div className="absolute inset-0 flex items-center justify-center text-zinc-600 font-mono text-sm">
