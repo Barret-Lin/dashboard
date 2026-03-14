@@ -528,7 +528,7 @@ JSON 格式範例：
     "date": "2026-03-08",
     "title": "共機越過海峽中線",
     "description": "國防部偵獲多架次共機越過海峽中線...",
-    "url": "https://www.cna.com.tw/news/aipl/202603080001.aspx",
+    "url": "[請填入真實新聞網址，例如 https://www.cna.com.tw/news/12345.aspx]",
     "category": "military",
     "impactLevel": 8
   },
@@ -536,7 +536,7 @@ JSON 格式範例：
     "date": "2026-03-10",
     "title": "中國宣布新一波農產品禁令",
     "description": "中國海關總署宣布暫停進口台灣某農產品...",
-    "url": "https://news.ltn.com.tw/news/politics/breakingnews/1234567",
+    "url": "[請填入真實新聞網址，例如 https://news.ltn.com.tw/news/12345]",
     "category": "economic",
     "impactLevel": 5
   }
@@ -556,8 +556,58 @@ JSON 格式範例：
 
     const text = response.text || '[]';
     const parsedData = JSON.parse(text);
-    const eventsArray = Array.isArray(parsedData) ? parsedData : (parsedData.events || []);
+    let eventsArray = Array.isArray(parsedData) ? parsedData : (parsedData.events || []);
     
+    // Extract valid URLs from grounding metadata
+    const groundingMetadata = response.candidates?.[0]?.groundingMetadata;
+    const groundingChunks = groundingMetadata?.groundingChunks || [];
+    const validSources = groundingChunks
+      .map((chunk: any) => ({
+        title: chunk.web?.title || '',
+        uri: chunk.web?.uri || ''
+      }))
+      .filter((s: any) => s.uri);
+
+    // Validate and fix URLs
+    eventsArray = eventsArray.map((event: TimelineEvent) => {
+      if (event.url) {
+        // Check if the URL is a placeholder or not in the valid sources
+        const isPlaceholder = event.url.includes('[') || event.url.includes('example.com');
+        const isUrlValid = validSources.some((s: any) => s.uri === event.url);
+        
+        if (isPlaceholder || (!isUrlValid && validSources.length > 0)) {
+          // Try to find a matching source by title or description
+          const matchingSource = validSources.find((s: any) => 
+            event.title.includes(s.title) || s.title.includes(event.title) ||
+            event.description.includes(s.title) || s.title.includes(event.description)
+          );
+          
+          if (matchingSource) {
+            event.url = matchingSource.uri;
+          } else if (!isPlaceholder) {
+            // Try to find any source that shares the same domain
+            try {
+              const eventDomain = new URL(event.url).hostname;
+              const domainMatch = validSources.find((s: any) => s.uri.includes(eventDomain));
+              if (domainMatch) {
+                event.url = domainMatch.uri;
+              } else if (validSources.length > 0) {
+                // If all else fails, use the first valid source as a fallback
+                event.url = validSources[0].uri;
+              }
+            } catch (e) {
+              if (validSources.length > 0) event.url = validSources[0].uri;
+            }
+          } else if (validSources.length > 0) {
+            event.url = validSources[0].uri;
+          } else if (isPlaceholder) {
+            event.url = undefined;
+          }
+        }
+      }
+      return event;
+    });
+
     setLocalCache(cacheKey, eventsArray);
     return eventsArray as TimelineEvent[];
   } catch (error) {
