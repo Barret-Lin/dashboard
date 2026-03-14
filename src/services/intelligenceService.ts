@@ -323,21 +323,47 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
     let processedText = text;
     // Validate and fix markdown links [text](url)
     const markdownLinkRegex = /\[([^\]]+)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g;
-    processedText = processedText.replace(markdownLinkRegex, (match, linkText, url) => {
+    
+    const getUrisForRange = (start: number, end: number) => {
+      const uris = new Set<string>();
+      groundingSupports.forEach((support: any) => {
+        const sStart = support.segment?.startIndex || 0;
+        const sEnd = support.segment?.endIndex || 0;
+        // Check for overlap
+        if (sStart < end && sEnd > start) {
+          const indices = support.groundingChunkIndices || [];
+          indices.forEach((i: number) => {
+            const uri = groundingChunks[i]?.web?.uri;
+            if (uri) uris.add(uri);
+          });
+        }
+      });
+      return Array.from(uris);
+    };
+
+    processedText = processedText.replace(markdownLinkRegex, (match, linkText, url, offset) => {
       const cleanUrl = url.trim();
       
-      // If no grounding sources available, we can't verify, but we shouldn't break the UI
-      if (uniqueAllSources.length === 0) {
+      // 1. If the URL is already in grounding chunks, keep it
+      const isUrlInChunks = groundingChunks.some((c: any) => {
+        const chunkUri = c.web?.uri;
+        if (!chunkUri) return false;
+        // Ignore trailing slashes or query params for comparison
+        const normalize = (u: string) => u.split('?')[0].replace(/\/$/, '');
+        return normalize(chunkUri) === normalize(cleanUrl);
+      });
+      
+      if (isUrlInChunks) {
         return `[${linkText}](${cleanUrl})`;
       }
 
-      // 1. Exact or partial match in grounding sources
-      const isValid = uniqueAllSources.some(s => s.uri === cleanUrl || s.uri.includes(cleanUrl) || cleanUrl.includes(s.uri));
-      if (isValid) {
-        return `[${linkText}](${cleanUrl})`;
+      // 2. Try to find the URL from grounding supports overlapping with this link
+      const overlappingUris = getUrisForRange(offset, offset + match.length);
+      if (overlappingUris.length > 0) {
+        return `[${linkText}](${overlappingUris[0]})`;
       }
-      
-      // 2. Match by title
+
+      // 3. Match by title
       let bestMatch = uniqueAllSources.find(s => 
         linkText.includes(s.title) || s.title.includes(linkText)
       );
@@ -346,7 +372,7 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
         return `[${linkText}](${bestMatch.uri})`;
       }
       
-      // 3. Fallback: If it's a valid URL, keep it to prevent UI breakage (plain text)
+      // 4. Fallback
       try {
         if (cleanUrl.includes('[') || cleanUrl.includes('example.com')) {
           return linkText;
@@ -354,7 +380,7 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
         new URL(cleanUrl);
         return `[${linkText}](${cleanUrl})`;
       } catch (e) {
-        return linkText; // Strip if it's not even a valid URL
+        return linkText;
       }
     });
 
@@ -422,7 +448,7 @@ export async function fetchOverallThreatLevel(customApiKey?: string, forceRefres
 請嚴格搜尋「當日（台灣時間 ${todayStr} 00:00 至 23:59）」關於台海局勢的新聞（包含國內外媒體及社群網路），評估目前的整體威脅等級。
 
 【🔴 絕對強制指令 - 違反將導致系統錯誤 🔴】：
-1. 搜尋策略：你呼叫 Google Search 工具時，搜尋關鍵字「必須」包含年份 "${currentYear}" 與月份 "${currentMonth}月" 以及日期 "${todayStr}"，並強制加上 "after:${yesterdayStr} before:${tomorrowStr}" 參數，確保只獲取當日的資料。
+1. 搜尋策略：你呼叫 Google Search 工具時，搜尋關鍵字「必須」包含 "台海" 或 "國防部" 或 "共機"，並強制加上 "after:${yesterdayStr} before:${tomorrowStr}" 參數，確保只獲取當日的資料。
 2. 來源審查（極度重要）：在閱讀搜尋結果時，請「嚴格檢查」每篇文章的發布精確時間。不在定義抓取資料時間週期內（非 ${todayStr} 當日）的來源需「嚴格全部捨棄」，絕對不可作為評分依據，也不可作為 Verified Sources。
 3. 連結正確性：系統會自動抓取你參考的網頁作為 Verified Sources。請確保你只依賴「真實存在、且為最新發布」的搜尋結果。
 
@@ -626,12 +652,39 @@ JSON 格式範例：
     // Extract valid URLs from grounding metadata
     const groundingMetadata = response.candidates?.[0]?.groundingMetadata;
     const groundingChunks = groundingMetadata?.groundingChunks || [];
+    const groundingSupports = groundingMetadata?.groundingSupports || [];
     const validSources = groundingChunks
       .map((chunk: any) => ({
         title: chunk.web?.title || '',
         uri: chunk.web?.uri || ''
       }))
       .filter((s: any) => s.uri);
+
+    const getUrisForText = (searchText: string) => {
+      if (!searchText) return [];
+      
+      const uris = new Set<string>();
+      groundingSupports.forEach((support: any) => {
+        const sStart = support.segment?.startIndex || 0;
+        const sEnd = support.segment?.endIndex || 0;
+        const segmentText = support.segment?.text || text.substring(sStart, sEnd);
+        
+        if (segmentText && segmentText.length > 10) {
+          // Remove JSON formatting characters for comparison
+          const cleanSegment = segmentText.replace(/["{}\[\]\\]/g, '').trim();
+          const cleanSearch = searchText.replace(/["{}\[\]\\]/g, '').trim();
+          
+          if (cleanSearch.includes(cleanSegment) || cleanSegment.includes(cleanSearch)) {
+            const indices = support.groundingChunkIndices || [];
+            indices.forEach((i: number) => {
+              const uri = groundingChunks[i]?.web?.uri;
+              if (uri) uris.add(uri);
+            });
+          }
+        }
+      });
+      return Array.from(uris);
+    };
 
     // Validate and fix URLs
     // We only keep events that have a highly confident URL match
@@ -648,52 +701,66 @@ JSON 格式範例：
       }
 
       if (event.url) {
-        const isPlaceholder = event.url.includes('[') || event.url.includes('example.com');
-        const isUrlValid = validSources.some((s: any) => s.uri === event.url);
+        const cleanUrl = event.url.trim();
+        const isPlaceholder = cleanUrl.includes('[') || cleanUrl.includes('example.com');
         
-        if (isPlaceholder || !isUrlValid) {
-          // If the URL is not exactly in the grounding sources, we try to find a strong match
-          // A strong match means the title or description shares significant keywords with the source title
-          let bestMatch = null;
-          let highestScore = 0;
-
-          for (const source of validSources) {
-            let score = 0;
-            const sourceTitleLower = source.title.toLowerCase();
-            const eventTitleLower = event.title.toLowerCase();
-            
-            // Exact or partial title match
-            if (sourceTitleLower.includes(eventTitleLower) || eventTitleLower.includes(sourceTitleLower)) {
-              score += 10;
-            }
-
-            // Keyword matching
-            const keywords = event.title.split(/[\s,，。、]+/).filter(k => k.length > 1);
-            for (const keyword of keywords) {
-              if (sourceTitleLower.includes(keyword.toLowerCase())) {
-                score += 2;
-              }
-            }
-
-            if (score > highestScore) {
-              highestScore = score;
-              bestMatch = source;
-            }
-          }
+        const normalize = (u: string) => u.split('?')[0].replace(/\/$/, '');
+        const isUrlInChunks = groundingChunks.some((c: any) => {
+          const chunkUri = c.web?.uri;
+          return chunkUri && normalize(chunkUri) === normalize(cleanUrl);
+        });
+        
+        if (isPlaceholder || !isUrlInChunks) {
+          // Try to get URI from grounding supports for the description or title
+          const urisFromDesc = getUrisForText(event.description);
+          const urisFromTitle = getUrisForText(event.title);
+          const allUris = [...urisFromDesc, ...urisFromTitle];
           
-          // Only accept the match if the score is high enough (at least some keywords matched)
-          if (bestMatch && highestScore >= 4) {
-            event.url = bestMatch.uri;
+          if (allUris.length > 0) {
+            event.url = allUris[0];
           } else {
-            // If we can't find a strong match, but it's a valid URL format, keep it to prevent UI breakage
-            try {
-              if (isPlaceholder) {
-                event.url = undefined;
-              } else {
-                new URL(event.url);
+            // Fallback to title matching
+            let bestMatch = null;
+            let highestScore = 0;
+
+            for (const source of validSources) {
+              let score = 0;
+              const sourceTitleLower = source.title.toLowerCase();
+              const eventTitleLower = event.title.toLowerCase();
+              
+              // Exact or partial title match
+              if (sourceTitleLower.includes(eventTitleLower) || eventTitleLower.includes(sourceTitleLower)) {
+                score += 10;
               }
-            } catch (e) {
-              event.url = undefined; // Strip if it's not even a valid URL
+
+              // Keyword matching
+              const keywords = event.title.split(/[\s,，。、]+/).filter(k => k.length > 1);
+              for (const keyword of keywords) {
+                if (sourceTitleLower.includes(keyword.toLowerCase())) {
+                  score += 2;
+                }
+              }
+
+              if (score > highestScore) {
+                highestScore = score;
+                bestMatch = source;
+              }
+            }
+            
+            // Only accept the match if the score is high enough (at least some keywords matched)
+            if (bestMatch && highestScore >= 4) {
+              event.url = bestMatch.uri;
+            } else {
+              // If we can't find a strong match, but it's a valid URL format, keep it to prevent UI breakage
+              try {
+                if (isPlaceholder) {
+                  event.url = undefined;
+                } else {
+                  new URL(event.url);
+                }
+              } catch (e) {
+                event.url = undefined; // Strip if it's not even a valid URL
+              }
             }
           }
         }
