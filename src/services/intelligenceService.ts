@@ -508,7 +508,8 @@ export async function fetchMapData(customApiKey?: string, forceRefresh = false):
 【🔴 絕對強制指令 🔴】：
 1. 搜尋策略：請搜尋 "${todayStr} 國防部 臺海周邊海 空域動態"，強制獲取當日發布的資料。並強制加上 "after:${yesterdayStr} before:${tomorrowStr}" 參數，以確保搜尋引擎只回傳當日的結果。
 2. 來源審查（極度重要）：在閱讀搜尋結果時，請「嚴格檢查」每篇文章的發布精確時間。不在定義抓取資料時間週期內（非 ${todayStr} 當日）的來源需「嚴格全部捨棄」，絕對不可採用。
-3. 必須回傳純 JSON 格式，絕對不要包含 Markdown 語法 (如 \`\`\`json) 或其他文字。
+3. 時間合理性（極度重要）：資料的 \`updateTime\` 絕對不可以超過現在的系統時間 \`${now}\`。如果當日（${todayStr}）的資料尚未發布（例如現在時間早於 09:00），請將所有數值填 0，並將 \`updateTime\` 設為 "尚未發布"，絕對禁止捏造未來的時間或數據。
+4. 必須回傳純 JSON 格式，絕對不要包含 Markdown 語法 (如 \`\`\`json) 或其他文字。
 
 JSON 格式範例與說明：
 {
