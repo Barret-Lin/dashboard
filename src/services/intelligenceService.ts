@@ -224,9 +224,9 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
 
 【深度檢索與引用規範】執行時請嚴格遵守以下步驟：
 1. 搜尋來源：僅限使用官方網站、學術論文或知名新聞媒體的資料。
-2. 摘錄內容：針對每個關鍵論點，先引用原始網頁中的一段話。
-3. 標註連結：在引用後方提供完整的 [日期＋媒體名稱](真實網址) 的超連結。請確保連結為當下可點擊且直接連往該資訊頁面的網址。
-4. 最終校核：在輸出前，請再次檢查該連結是否存在於你的檢索結果中，若不確定連結的真實性，請直接註明【資料不足，無法確認】，嚴禁拼湊網址。
+2. 摘錄內容：針對每個資料來源，先引用原始網頁中的一段話，不得超出20個字。
+3. 標註連結：在引用文字上提供完整的超連結。請確保連結為當下可點擊且直接連往該資訊頁面的網址。
+4. 最終校核：在輸出前，請再次檢查該連結是否存在於你的檢索結果中，若不確定連結的真實性，請勿顯示該事件，嚴禁拼湊網址。
 
 【🔴 絕對強制指令 - 違反將導致系統錯誤 🔴】：
 1. 搜尋策略：你呼叫 Google Search 工具時，搜尋關鍵字「必須」包含年份 "${currentYear}" 與月份 "${currentMonth}月" 以及日期 "${todayStr}"，並強制加上 "after:${yesterdayStr} before:${tomorrowStr}" 參數，以確保搜尋引擎只回傳當日的結果。
@@ -237,7 +237,7 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
 請使用 Markdown 格式排版，包含以下內容：
 1. **近期重大事件**：請分析並列出當日與台海相關的重大「軍事」、「經濟」、「外交」或「認知作戰」的事件。
    - 格式：請具體寫出時間點與消息來源，並「強制標示該新聞的發布日期與時間」。
-   - 連結強制要求：所有引用媒體的內容，其「日期＋媒體名稱」【必須】使用 Markdown 超連結格式包裝（例如：[2026-03-14 中央社](https://www.cna.com.tw/...)）。請務必在內文中產生超連結！
+   - 連結強制要求：所有引用媒體的內容，其「引用文字」【必須】使用 Markdown 超連結格式包裝（例如：[國防部偵獲多架次共機越過海峽中線](https://www.cna.com.tw/...)）。請務必在內文中產生超連結！
    - 絕對禁止虛妄連結：超連結網址必須是「真實存在」且「直接連到該篇新聞」的絕對網址。你必須從 Google Search 的結果 (Grounding Sources) 中精確複製該新聞的真實 URL。如果找不到直接連結，請不要加上超連結。
 2. **威脅評估**：分析這些行動對台灣的整體影響與威脅程度。
 3. **戰略意圖分析**：簡述背後可能的戰略或政治目的。
@@ -249,9 +249,9 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
 
 【深度檢索與引用規範】執行時請嚴格遵守以下步驟：
 1. 搜尋來源：僅限使用官方網站、學術論文或知名新聞媒體的資料。
-2. 摘錄內容：針對每個關鍵論點，先引用原始網頁中的一段話。
-3. 標註連結：在引用後方提供完整的 [日期＋媒體名稱](真實網址) 的超連結。請確保連結為當下可點擊且直接連往該資訊頁面的網址。
-4. 最終校核：在輸出前，請再次檢查該連結是否存在於你的檢索結果中，若不確定連結的真實性，請直接註明【資料不足，無法確認】，嚴禁拼湊網址。
+2. 摘錄內容：針對每個資料來源，先引用原始網頁中的一段話，不得超出20個字。
+3. 標註連結：在引用文字上提供完整的超連結。請確保連結為當下可點擊且直接連往該資訊頁面的網址。
+4. 最終校核：在輸出前，請再次檢查該連結是否存在於你的檢索結果中，若不確定連結的真實性，請勿顯示該事件，嚴禁拼湊網址。
 
 【🔴 絕對強制指令 - 違反將導致系統錯誤 🔴】：
 1. 搜尋策略：你呼叫 Google Search 工具時，搜尋關鍵字「必須」包含年份 "${currentYear}" 與月份 "${currentMonth}月" 以及日期 "${todayStr}"，並強制加上 "after:${yesterdayStr} before:${tomorrowStr}" 參數，確保只獲取當日的資料。
@@ -262,7 +262,7 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
 請使用 Markdown 格式排版，包含以下內容：
 1. **近期重大事件**：列出具體事件。
    - 格式：請具體寫出時間點與消息來源，並「強制標示該新聞的發布日期與時間」。
-   - 連結強制要求：所有引用媒體的內容，其「日期＋媒體名稱」【必須】使用 Markdown 超連結格式包裝（例如：[2026-03-14 中央社](https://www.cna.com.tw/...)）。請務必在內文中產生超連結！
+   - 連結強制要求：所有引用媒體的內容，其「引用文字」【必須】使用 Markdown 超連結格式包裝（例如：[國防部偵獲多架次共機越過海峽中線](https://www.cna.com.tw/...)）。請務必在內文中產生超連結！
    - 絕對禁止虛妄連結：超連結網址必須是「真實存在」且「直接連到該篇新聞」的絕對網址。你必須從 Google Search 的結果 (Grounding Sources) 中精確複製該新聞的真實 URL。如果找不到直接連結，請不要加上超連結。
 2. **威脅評估**：分析這些行動對台灣的影響與威脅程度。
 3. **戰略意圖分析**：簡述背後可能的戰略或政治目的。
@@ -421,6 +421,12 @@ export async function fetchOverallThreatLevel(customApiKey?: string, forceRefres
   const prompt = `現在精確時間是台灣時間 ${now} (YYYY-MM-DD: ${todayStr})。
 請嚴格搜尋「當日（台灣時間 ${todayStr} 00:00 至 23:59）」關於台海局勢的新聞（包含國內外媒體及社群網路），評估目前的整體威脅等級。
 
+【深度檢索與引用規範】執行時請嚴格遵守以下步驟：
+1. 搜尋來源：僅限使用官方網站、學術論文或知名新聞媒體的資料。
+2. 摘錄內容：針對每個資料來源，先引用原始網頁中的一段話，不得超出20個字。
+3. 標註連結：在引用文字上提供完整的超連結。請確保連結為當下可點擊且直接連往該資訊頁面的網址。
+4. 最終校核：在輸出前，請再次檢查該連結是否存在於你的檢索結果中，若不確定連結的真實性，請勿顯示該事件，嚴禁拼湊網址。
+
 【🔴 絕對強制指令 - 違反將導致系統錯誤 🔴】：
 1. 搜尋策略：你呼叫 Google Search 工具時，搜尋關鍵字「必須」包含年份 "${currentYear}" 與月份 "${currentMonth}月" 以及日期 "${todayStr}"，並強制加上 "after:${yesterdayStr} before:${tomorrowStr}" 參數，確保只獲取當日的資料。
 2. 來源審查（極度重要）：在閱讀搜尋結果時，請「嚴格檢查」每篇文章的發布精確時間。不在定義抓取資料時間週期內（非 ${todayStr} 當日）的來源需「嚴格全部捨棄」，絕對不可作為評分依據，也不可作為 Verified Sources。
@@ -444,7 +450,7 @@ JSON 格式範例：
 {
   "level": "ELEVATED",
   "totalScore": 55,
-  "summary": "簡短的整體威脅摘要（繁體中文）...",
+  "summary": "根據[國防部表示...](https://...)，今日台海局勢...",
   "scores": {
     "military": 60,
     "economic": 40,
@@ -480,6 +486,13 @@ JSON 格式範例：
     const groundingChunks = groundingMetadata?.groundingChunks || [];
     const groundingSupports = groundingMetadata?.groundingSupports || [];
 
+    const allSources = groundingChunks
+      .map((chunk: any) => ({
+        title: chunk.web?.title || '未知來源',
+        uri: chunk.web?.uri || '',
+      }))
+      .filter((s: any) => s.uri);
+
     const usedChunkIndices = new Set<number>();
     if (groundingSupports.length > 0) {
       groundingSupports.forEach((support: any) => {
@@ -487,6 +500,8 @@ JSON 格式範例：
           support.groundingChunkIndices.forEach((index: number) => usedChunkIndices.add(index));
         }
       });
+    } else {
+      groundingChunks.forEach((_: any, index: number) => usedChunkIndices.add(index));
     }
 
     const sources = groundingChunks
@@ -500,6 +515,42 @@ JSON 格式範例：
       .filter((s: any) => s.uri);
 
     const uniqueSources = Array.from(new Map(sources.map((s: any) => [s.uri, s])).values()) as { title: string; uri: string }[];
+    const uniqueAllSources = Array.from(new Map(allSources.map((s: any) => [s.uri, s])).values()) as { title: string; uri: string }[];
+
+    let processedSummary = parsedData.summary || '';
+    const markdownLinkRegex = /\[([^\]]+)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g;
+    processedSummary = processedSummary.replace(markdownLinkRegex, (match: string, linkText: string, url: string) => {
+      const cleanUrl = url.trim();
+      
+      if (uniqueAllSources.length === 0) {
+        return `[${linkText}](${cleanUrl})`;
+      }
+
+      const isValid = uniqueAllSources.some(s => s.uri === cleanUrl || s.uri.includes(cleanUrl) || cleanUrl.includes(s.uri));
+      if (isValid) {
+        return `[${linkText}](${cleanUrl})`;
+      }
+      
+      let bestMatch = uniqueAllSources.find(s => 
+        linkText.includes(s.title) || s.title.includes(linkText)
+      );
+      
+      if (bestMatch) {
+        return `[${linkText}](${bestMatch.uri})`;
+      }
+      
+      try {
+        if (cleanUrl.includes('[') || cleanUrl.includes('example.com')) {
+          return linkText;
+        }
+        new URL(cleanUrl);
+        return `[${linkText}](${cleanUrl})`;
+      } catch (e) {
+        return linkText;
+      }
+    });
+
+    parsedData.summary = processedSummary;
 
     const result: ThreatLevelData = {
       ...parsedData,
@@ -540,12 +591,16 @@ export interface MapData {
     shipsTotal: number;
     officialShips: number;
     targets: { id: number; lat: number; lng: number; type: 'aircraft' | 'ship' | 'fishing'; heading: number }[];
+    sourceText?: string;
+    sourceUrl?: string;
   };
   exerciseZones: {
     name: string;
     time: string;
     type: string;
     coordinates: [number, number][];
+    sourceText?: string;
+    sourceUrl?: string;
   }[];
 }
 
@@ -580,7 +635,7 @@ export async function fetchTimelineEvents(customApiKey?: string, forceRefresh = 
 
 【深度檢索與引用規範】執行時請嚴格遵守以下步驟：
 1. 搜尋來源：僅限使用官方網站、學術論文或知名新聞媒體的資料。
-2. 摘錄內容：針對每個關鍵論點，先引用原始網頁中的一段話，不得超出20個字。請將這段摘錄文字填入 JSON 的 \`title\` 欄位。
+2. 摘錄內容：針對每個資料來源，先引用原始網頁中的一段話，不得超出20個字。請將這段摘錄文字填入 JSON 的 \`title\` 欄位。
 3. 標註連結：在引用文字上提供完整的超連結。請確保連結為當下可點擊且直接連往該資訊頁面的網址。請將真實網址填入 JSON 的 \`url\` 欄位。
 4. 最終校核：在輸出前，請再次檢查該連結是否存在於你的檢索結果中，若不確定連結的真實性，請勿顯示該事件，嚴禁拼湊網址。
 
@@ -597,7 +652,7 @@ JSON 格式範例：
   {
     "date": "2026-03-08",
     "title": "國防部偵獲多架次共機越過海峽中線",
-    "description": "國防部偵獲多架次共機越過海峽中線...",
+    "description": "根據[國防部表示...](https://www.cna.com.tw/news/aipl/202603080001.aspx)，國防部偵獲多架次共機越過海峽中線...",
     "url": "https://www.cna.com.tw/news/aipl/202603080001.aspx",
     "category": "military",
     "impactLevel": 8
@@ -731,6 +786,12 @@ export async function fetchMapData(customApiKey?: string, forceRefresh = false, 
   const prompt = `現在精確時間是台灣時間 ${now} (YYYY-MM-DD: ${todayStr})。
 請扮演頂尖的開源情報（OSINT）分析師。你的任務是搜尋「國防部 臺海周邊海、空域動態」的「當日（台灣時間 ${todayStr} 00:00 至 23:59）、即時」最新發布資料，以及中國海事局最新的「航行警告 / 禁航區 / 演習」公告。
 
+【深度檢索與引用規範】執行時請嚴格遵守以下步驟：
+1. 搜尋來源：僅限使用官方網站、學術論文或知名新聞媒體的資料。
+2. 摘錄內容：針對每個資料來源，先引用原始網頁中的一段話，不得超出20個字。
+3. 標註連結：在引用文字上提供完整的超連結。請確保連結為當下可點擊且直接連往該資訊頁面的網址。
+4. 最終校核：在輸出前，請再次檢查該連結是否存在於你的檢索結果中，若不確定連結的真實性，請勿顯示該事件，嚴禁拼湊網址。
+
 【🔴 絕對強制指令 🔴】：
 1. 搜尋策略：請搜尋 "${todayStr} 國防部 臺海周邊海 空域動態"，強制獲取當日發布的資料。並強制加上 "after:${yesterdayStr} before:${tomorrowStr}" 參數，以確保搜尋引擎只回傳當日的結果。
 2. 來源審查（極度重要）：在閱讀搜尋結果時，請「嚴格檢查」每篇文章的發布精確時間。不在定義抓取資料時間週期內（非 ${todayStr} 當日）的來源需「嚴格全部捨棄」，絕對不可採用。
@@ -745,6 +806,8 @@ JSON 格式範例與說明：
     "aircraftCrossed": 10, // 逾越海峽中線及進入西南空域數
     "shipsTotal": 6, // 偵獲共艦總數
     "officialShips": 2, // 公務船總數
+    "sourceText": "國防部發布共機動態...", // 引用原始網頁中的一段話，不得超出20個字
+    "sourceUrl": "https://...", // 該資訊頁面的真實網址
     "targets": [ // 根據數量隨機生成合理的經緯度座標 (台灣周邊，lat: 21~26, lng: 119~123)
       { "id": 1, "lat": 24.5, "lng": 119.5, "type": "aircraft", "heading": 90 },
       { "id": 2, "lat": 22.5, "lng": 120.5, "type": "ship", "heading": 180 }
@@ -755,6 +818,8 @@ JSON 格式範例與說明：
       "name": "海空聯合戰備警巡",
       "time": "2026/03/10 12:00 - 03/15 12:00",
       "type": "實彈射擊、海空封控",
+      "sourceText": "中國海事局發布航行警告...", // 引用原始網頁中的一段話，不得超出20個字
+      "sourceUrl": "https://...", // 該資訊頁面的真實網址
       "coordinates": [ // 禁航區的多邊形座標
         [25.25, 120.23], [25.25, 120.85], [24.83, 120.85], [24.83, 120.23]
       ]
@@ -777,6 +842,89 @@ JSON 格式範例與說明：
     const text = response.text || '{}';
     const parsedData = JSON.parse(text);
     
+    const groundingMetadata = response.candidates?.[0]?.groundingMetadata;
+    const groundingChunks = groundingMetadata?.groundingChunks || [];
+    const validSources = groundingChunks
+      .map((chunk: any) => ({
+        title: chunk.web?.title || '',
+        uri: chunk.web?.uri || ''
+      }))
+      .filter((s: any) => s.uri);
+
+    const validateUrl = (url: string | undefined, text: string | undefined) => {
+      if (!url) return undefined;
+      const isPlaceholder = url.includes('[') || url.includes('example.com');
+      const isUrlValid = validSources.some((s: any) => s.uri === url);
+      
+      if (isPlaceholder || !isUrlValid) {
+        let bestMatch = null;
+        let highestScore = 0;
+
+        for (const source of validSources) {
+          let score = 0;
+          const sourceTitleLower = source.title.toLowerCase();
+          const textLower = (text || '').toLowerCase();
+          
+          if (textLower && sourceTitleLower.includes(textLower)) score += 5;
+          if (textLower && textLower.includes(sourceTitleLower)) score += 5;
+          
+          if (score > highestScore) {
+            highestScore = score;
+            bestMatch = source;
+          }
+        }
+
+        if (bestMatch && highestScore >= 5) {
+          return bestMatch.uri;
+        } else if (!isPlaceholder) {
+          try {
+            new URL(url);
+            return url;
+          } catch (e) {
+            return undefined;
+          }
+        } else {
+          return undefined;
+        }
+      }
+      return url;
+    };
+
+    if (parsedData.surveillance) {
+      if (parsedData.surveillance.sourceText) {
+        const mdLinkMatch = parsedData.surveillance.sourceText.match(/\[([^\]]+)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/);
+        if (mdLinkMatch) {
+          parsedData.surveillance.sourceText = mdLinkMatch[1];
+          if (!parsedData.surveillance.sourceUrl || parsedData.surveillance.sourceUrl.includes('[') || parsedData.surveillance.sourceUrl.includes('example.com')) {
+            parsedData.surveillance.sourceUrl = mdLinkMatch[2];
+          }
+        }
+      }
+      parsedData.surveillance.sourceUrl = validateUrl(parsedData.surveillance.sourceUrl, parsedData.surveillance.sourceText);
+      if (!parsedData.surveillance.sourceUrl) {
+        delete parsedData.surveillance.sourceText;
+      }
+    }
+
+    if (Array.isArray(parsedData.exerciseZones)) {
+      parsedData.exerciseZones = parsedData.exerciseZones.map((zone: any) => {
+        if (zone.sourceText) {
+          const mdLinkMatch = zone.sourceText.match(/\[([^\]]+)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/);
+          if (mdLinkMatch) {
+            zone.sourceText = mdLinkMatch[1];
+            if (!zone.sourceUrl || zone.sourceUrl.includes('[') || zone.sourceUrl.includes('example.com')) {
+              zone.sourceUrl = mdLinkMatch[2];
+            }
+          }
+        }
+        zone.sourceUrl = validateUrl(zone.sourceUrl, zone.sourceText);
+        if (!zone.sourceUrl) {
+          delete zone.sourceText;
+        }
+        return zone;
+      });
+    }
+
     // Ensure targets have IDs and valid types
     if (parsedData.surveillance && Array.isArray(parsedData.surveillance.targets)) {
       parsedData.surveillance.targets = parsedData.surveillance.targets.map((t: any, i: number) => ({
