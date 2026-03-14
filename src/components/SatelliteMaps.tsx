@@ -154,7 +154,7 @@ export const SatelliteMaps: React.FC<{ apiKey?: string; isPaidApiKey?: boolean }
           
           {/* Announcement Overlay */}
           {exerciseZones.length > 0 && (
-            <div className="absolute bottom-2 left-2 z-[500] bg-black/80 border border-red-500/50 p-2 rounded text-[9px] md:text-[10px] font-mono backdrop-blur-sm pointer-events-auto shadow-[0_0_10px_rgba(239,68,68,0.2)]">
+            <div className="absolute bottom-2 left-2 z-[500] bg-black/80 border border-red-500/50 p-2 rounded text-[9px] md:text-[10px] font-mono backdrop-blur-sm pointer-events-none shadow-[0_0_10px_rgba(239,68,68,0.2)]">
               <div className="text-red-500 font-bold mb-0.5 flex items-center gap-1">
                 <AlertTriangle className="w-3 h-3" />
                 [NAVWARN] 禁航/禁飛區公告
@@ -162,13 +162,6 @@ export const SatelliteMaps: React.FC<{ apiKey?: string; isPaidApiKey?: boolean }
               <div className="text-zinc-300">主題: {exerciseZones[0].name}</div>
               <div className="text-zinc-300">時間: {exerciseZones[0].time}</div>
               <div className="text-zinc-300">性質: {exerciseZones[0].type}</div>
-              {exerciseZones[0].sourceText && exerciseZones[0].sourceUrl && (
-                <div className="mt-1 pt-1 border-t border-red-900/50">
-                  <a href={exerciseZones[0].sourceUrl} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:text-blue-300 underline" title={exerciseZones[0].sourceText}>
-                    {exerciseZones[0].sourceText}
-                  </a>
-                </div>
-              )}
             </div>
           )}
 
@@ -231,7 +224,7 @@ export const SatelliteMaps: React.FC<{ apiKey?: string; isPaidApiKey?: boolean }
           
           {/* Surveillance Stats Overlay */}
           {mapData?.surveillance && (
-            <div className="absolute bottom-2 left-2 z-[500] bg-black/80 border border-emerald-500/50 p-2 rounded text-[9px] md:text-[10px] font-mono backdrop-blur-sm pointer-events-auto shadow-[0_0_10px_rgba(16,185,129,0.2)]">
+            <div className="absolute bottom-2 left-2 z-[500] bg-black/80 border border-emerald-500/50 p-2 rounded text-[9px] md:text-[10px] font-mono backdrop-blur-sm pointer-events-none shadow-[0_0_10px_rgba(16,185,129,0.2)]">
               <div className="text-emerald-500 font-bold mb-0.5">
                 [STATS] 國防部即時動態
               </div>
@@ -239,13 +232,6 @@ export const SatelliteMaps: React.FC<{ apiKey?: string; isPaidApiKey?: boolean }
               <div className="text-zinc-300">偵獲共機: <span className="text-red-400">{mapData.surveillance.aircraftTotal}</span> 架次 (逾越中線: {mapData.surveillance.aircraftCrossed})</div>
               <div className="text-zinc-300">偵獲共艦: <span className="text-amber-400">{mapData.surveillance.shipsTotal}</span> 艘次</div>
               <div className="text-zinc-300">公務船隻: <span className="text-emerald-400">{mapData.surveillance.officialShips}</span> 艘次</div>
-              {mapData.surveillance.sourceText && mapData.surveillance.sourceUrl && (
-                <div className="mt-1 pt-1 border-t border-emerald-900/50">
-                  <a href={mapData.surveillance.sourceUrl} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:text-blue-300 underline" title={mapData.surveillance.sourceText}>
-                    {mapData.surveillance.sourceText}
-                  </a>
-                </div>
-              )}
             </div>
           )}
 

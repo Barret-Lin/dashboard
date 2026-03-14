@@ -40,11 +40,6 @@ body {
 
 .markdown-body strong { color: #fff; font-weight: 600; }
 
-.markdown-body-inline p {
-  display: inline;
-  margin-bottom: 0;
-}
-
 .scan-line {
   position: absolute;
   top: 0;

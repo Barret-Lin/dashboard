@@ -347,7 +347,7 @@ export default function App() {
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
                 <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
               </div>
-              <h1 className="text-3xl font-bold tracking-tight text-zinc-100 uppercase font-mono">台海戰情即時情報網 <span className="text-xs text-zinc-600 font-mono ml-2">v3.4</span></h1>
+              <h1 className="text-3xl font-bold tracking-tight text-zinc-100 uppercase font-mono">台海戰情即時情報網 <span className="text-xs text-zinc-600 font-mono ml-2">v3.3</span></h1>
             </div>
             <div className="flex items-center gap-4">
               <p className="text-zinc-500 font-mono text-[10px] tracking-widest uppercase flex items-center gap-2">
@@ -392,11 +392,7 @@ export default function App() {
                 <div className="h-4 w-full bg-zinc-800 animate-pulse rounded"></div>
               ) : (
                 <div className="flex flex-col gap-1">
-                  <div className="text-xs text-zinc-400 line-clamp-2 font-mono markdown-body-inline">
-                    <Markdown components={{ a: CopyableMarkdownLink }}>
-                      {threatLevel?.summary || '系統初始化中...'}
-                    </Markdown>
-                  </div>
+                  <p className="text-xs text-zinc-400 line-clamp-2 font-mono">{threatLevel?.summary || '系統初始化中...'}</p>
                   {threatLevel?.sources && threatLevel.sources.length > 0 && (
                     <div className="flex items-center gap-2 mt-1 overflow-x-auto pb-1 no-scrollbar">
                       <span className="text-[10px] text-zinc-500 uppercase font-mono shrink-0">Sources:</span>
