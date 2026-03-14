@@ -107,20 +107,20 @@ export function TimelineView({ apiKey, isPaidApiKey }: TimelineViewProps) {
                 </div>
 
                 {/* Content */}
-                <div className="mt-6 text-center flex flex-col items-center w-full">
-                  <h4 className={`text-sm font-mono font-bold ${styles.text} mb-1`}>{event.date}</h4>
+                <div className="mt-8 text-center flex flex-col items-center w-full">
+                  <h4 className={`text-sm font-mono font-bold ${styles.text} mb-2`}>{event.date}</h4>
                   {event.url ? (
                     <a 
                       href={event.url} 
                       target="_blank" 
                       rel="noopener noreferrer"
-                      className="text-xs font-bold text-zinc-100 hover:text-blue-400 transition-colors line-clamp-3 flex items-center mb-2 h-10"
+                      className="text-xs font-bold text-zinc-100 hover:text-blue-400 transition-colors line-clamp-3 mb-3 min-h-[48px]"
                       title={event.title}
                     >
                       {event.title}
                     </a>
                   ) : (
-                    <h5 className="text-xs font-bold text-zinc-100 line-clamp-3 flex items-center mb-2 h-10" title={event.title}>{event.title}</h5>
+                    <h5 className="text-xs font-bold text-zinc-100 line-clamp-3 mb-3 min-h-[48px]" title={event.title}>{event.title}</h5>
                   )}
                   
                   {/* KPI Indicator */}

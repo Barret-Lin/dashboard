@@ -322,32 +322,40 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
 
     let processedText = text;
     // Validate and fix markdown links [text](url)
-    const markdownLinkRegex = /\[([^\]]+)\]\(([^)]+)\)/g;
+    const markdownLinkRegex = /\[([^\]]+)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g;
     processedText = processedText.replace(markdownLinkRegex, (match, linkText, url) => {
-      const isValid = uniqueAllSources.some(s => s.uri === url);
+      const cleanUrl = url.trim();
+      
+      // If no grounding sources available, we can't verify, but we shouldn't break the UI
+      if (uniqueAllSources.length === 0) {
+        return `[${linkText}](${cleanUrl})`;
+      }
+
+      // 1. Exact or partial match in grounding sources
+      const isValid = uniqueAllSources.some(s => s.uri === cleanUrl || s.uri.includes(cleanUrl) || cleanUrl.includes(s.uri));
       if (isValid) {
-        return match;
+        return `[${linkText}](${cleanUrl})`;
       }
       
-      // Try to find a match by domain or title
-      let bestMatch = null;
-      try {
-        const urlDomain = new URL(url).hostname;
-        bestMatch = uniqueAllSources.find(s => s.uri.includes(urlDomain));
-      } catch (e) {}
-      
-      if (!bestMatch) {
-        bestMatch = uniqueAllSources.find(s => 
-          linkText.includes(s.title) || s.title.includes(linkText)
-        );
-      }
+      // 2. Match by title
+      let bestMatch = uniqueAllSources.find(s => 
+        linkText.includes(s.title) || s.title.includes(linkText)
+      );
       
       if (bestMatch) {
         return `[${linkText}](${bestMatch.uri})`;
       }
       
-      // If no valid source found, just return the text without link
-      return linkText;
+      // 3. Fallback: If it's a valid URL, keep it to prevent UI breakage (plain text)
+      try {
+        if (cleanUrl.includes('[') || cleanUrl.includes('example.com')) {
+          return linkText;
+        }
+        new URL(cleanUrl);
+        return `[${linkText}](${cleanUrl})`;
+      } catch (e) {
+        return linkText; // Strip if it's not even a valid URL
+      }
     });
 
     const result = {
@@ -657,8 +665,16 @@ JSON 格式範例：
           if (bestMatch && highestScore >= 4) {
             event.url = bestMatch.uri;
           } else {
-            // If we can't find a strong match, it's better to have no URL than a wrong one
-            event.url = undefined;
+            // If we can't find a strong match, but it's a valid URL format, keep it to prevent UI breakage
+            try {
+              if (isPlaceholder) {
+                event.url = undefined;
+              } else {
+                new URL(event.url);
+              }
+            } catch (e) {
+              event.url = undefined; // Strip if it's not even a valid URL
+            }
           }
         }
       }
