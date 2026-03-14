@@ -206,7 +206,6 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
   const todayStr = getTaipeiDateString(0);
   const yesterdayStr = getTaipeiDateString(-1);
   const tomorrowStr = getTaipeiDateString(1);
-  const lastWeekStr = getTaipeiDateString(-7);
   
   const d = new Date();
   const utc = d.getTime() + (d.getTimezoneOffset() * 60000);
@@ -236,12 +235,12 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
 請確保資訊是最新的，並基於真實的新聞報導與社群動態。`;
   } else {
     prompt = `現在精確時間是台灣時間 ${now} (YYYY-MM-DD: ${todayStr})。
-請扮演頂尖的開源情報（OSINT）分析師。你的任務是彙整「過去一週內（台灣時間 ${lastWeekStr} 00:00 至 ${todayStr} 23:59）」關於中國對台灣的「${categoryQuery}」最新動態與新聞。
+請扮演頂尖的開源情報（OSINT）分析師。你的任務是彙整「當日（台灣時間 ${todayStr} 00:00 至 23:59）」關於中國對台灣的「${categoryQuery}」最新動態與新聞。
 
 【🔴 絕對強制指令 - 違反將導致系統錯誤 🔴】：
-1. 搜尋策略：你呼叫 Google Search 工具時，搜尋關鍵字「必須」包含年份 "${currentYear}" 與月份 "${currentMonth}月"，並強制加上 "after:${lastWeekStr} before:${tomorrowStr}" 參數，確保只獲取過去一週內的資料。
-2. 來源審查（極度重要）：在閱讀搜尋結果時，請「嚴格檢查」每篇文章的發布精確時間。不在定義抓取資料時間週期內（${lastWeekStr} 至 ${todayStr}）的來源需「嚴格全部捨棄」，絕對不可寫入報告，也不可作為 Verified Sources。
-3. 寧缺勿濫：如果搜尋後發現「沒有」過去一週內的最新重大消息，請直接回答「過去一週無重大事件」，絕對不允許拿舊新聞來湊數。
+1. 搜尋策略：你呼叫 Google Search 工具時，搜尋關鍵字「必須」包含年份 "${currentYear}" 與月份 "${currentMonth}月" 以及日期 "${todayStr}"，並強制加上 "after:${yesterdayStr} before:${tomorrowStr}" 參數，確保只獲取當日的資料。
+2. 來源審查（極度重要）：在閱讀搜尋結果時，請「嚴格檢查」每篇文章的發布精確時間。不在定義抓取資料時間週期內（非 ${todayStr} 當日）的來源需「嚴格全部捨棄」，絕對不可寫入報告，也不可作為 Verified Sources。
+3. 寧缺勿濫：如果搜尋後發現「沒有」當日的最新重大消息，請直接回答「當日無重大事件」，絕對不允許拿舊新聞來湊數。
 4. 連結正確性：系統會自動抓取你參考的網頁作為 Verified Sources。請確保你只依賴「真實存在、且為最新發布」的搜尋結果，不要自己發明或猜測網址。
 
 請使用 Markdown 格式排版，包含以下內容：
@@ -344,8 +343,8 @@ export async function fetchOverallThreatLevel(customApiKey?: string, forceRefres
 
   const now = new Date().toLocaleString('zh-TW', { timeZone: 'Asia/Taipei', hour12: false });
   const todayStr = getTaipeiDateString(0);
+  const yesterdayStr = getTaipeiDateString(-1);
   const tomorrowStr = getTaipeiDateString(1);
-  const lastWeekStr = getTaipeiDateString(-7);
   
   const d = new Date();
   const utc = d.getTime() + (d.getTimezoneOffset() * 60000);
@@ -354,11 +353,11 @@ export async function fetchOverallThreatLevel(customApiKey?: string, forceRefres
   const currentMonth = taipeiDate.getMonth() + 1;
 
   const prompt = `現在精確時間是台灣時間 ${now} (YYYY-MM-DD: ${todayStr})。
-請嚴格搜尋「過去一週內（台灣時間 ${lastWeekStr} 00:00 至 ${todayStr} 23:59）」關於台海局勢的新聞（包含國內外媒體及社群網路），評估目前的整體威脅等級。
+請嚴格搜尋「當日（台灣時間 ${todayStr} 00:00 至 23:59）」關於台海局勢的新聞（包含國內外媒體及社群網路），評估目前的整體威脅等級。
 
 【🔴 絕對強制指令 - 違反將導致系統錯誤 🔴】：
-1. 搜尋策略：你呼叫 Google Search 工具時，搜尋關鍵字「必須」包含年份 "${currentYear}" 與月份 "${currentMonth}月"，並強制加上 "after:${lastWeekStr} before:${tomorrowStr}" 參數，確保只獲取過去一週內的資料。
-2. 來源審查（極度重要）：在閱讀搜尋結果時，請「嚴格檢查」每篇文章的發布精確時間。不在定義抓取資料時間週期內（${lastWeekStr} 至 ${todayStr}）的來源需「嚴格全部捨棄」，絕對不可作為評分依據，也不可作為 Verified Sources。
+1. 搜尋策略：你呼叫 Google Search 工具時，搜尋關鍵字「必須」包含年份 "${currentYear}" 與月份 "${currentMonth}月" 以及日期 "${todayStr}"，並強制加上 "after:${yesterdayStr} before:${tomorrowStr}" 參數，確保只獲取當日的資料。
+2. 來源審查（極度重要）：在閱讀搜尋結果時，請「嚴格檢查」每篇文章的發布精確時間。不在定義抓取資料時間週期內（非 ${todayStr} 當日）的來源需「嚴格全部捨棄」，絕對不可作為評分依據，也不可作為 Verified Sources。
 3. 連結正確性：系統會自動抓取你參考的網頁作為 Verified Sources。請確保你只依賴「真實存在、且為最新發布」的搜尋結果。
 
 請依據以下四個面向給予 0~100 的威脅評分，並套用權重計算總分 (Total Score)：
