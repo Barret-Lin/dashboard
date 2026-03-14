@@ -240,8 +240,8 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
 【深度檢索與引用規範】執行時請遵守以下步驟：
 - 搜尋來源：僅限使用官方網站、學術論文或知名新聞媒體的資料。
 - 摘錄內容：針對每個關鍵論點，先引用原始網頁中的一段話。
-- 標註連結：在引用後方提供完整的「日期＋媒體名稱」的超連結。請確保連結為當下可點擊且直接連往該關鍵論點頁面的網址。
-- 最終校核：在輸出前，請再次檢查該連結是否存在於你的檢索結果中，若不確定連結的真實性，請直接註明【資料不足，無法確認】，嚴禁拼湊網址。
+- 標註連結：在引用後方，請使用 Markdown 格式標註「日期＋媒體名稱」，但網址部分請統一填寫 \`SOURCE_URL\`（例如：\`[2026-03-14 中央社](SOURCE_URL)\`）。
+- 嚴禁拼湊網址：**絕對不要**自己捏造或嘗試拼湊真實的 \`http\` 或 \`https\` 網址。系統會在後台自動將 \`SOURCE_URL\` 替換為真實且經過驗證的網址。
 
 【🔴 絕對強制指令 - 違反將導致系統錯誤 🔴】：
 1. 搜尋策略：你呼叫 Google Search 工具時，搜尋關鍵字「必須」包含年份 "${currentYear}" 與月份 "${currentMonth}月" 以及日期 "${todayStr}"，並強制加上 "after:${yesterdayStr} before:${tomorrowStr}" 參數，以確保搜尋引擎只回傳當日的結果。
@@ -252,8 +252,8 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
 請使用 Markdown 格式排版，包含以下內容：
 1. **近期重大事件**：請分析並列出當日與台海相關的重大「軍事」、「經濟」、「外交」或「認知作戰」的事件。
    - 格式：請具體寫出時間點與消息來源，並「強制標示該新聞的發布日期與時間」。
-   - 連結強制要求：所有引用媒體的內容，在引用後方【必須】使用 Markdown 超連結格式包裝（例如：...引用內容... [2026-03-14 中央社](https://www.cna.com.tw/...)）。
-   - 絕對禁止虛妄連結：超連結網址必須是「真實存在」且「直接連到該篇新聞」的絕對網址。你必須從 Google Search 的結果 (Grounding Sources) 中精確複製該新聞的真實 URL。如果找不到直接連結，請不要加上超連結。
+   - 連結強制要求：所有引用媒體的內容，在引用後方【必須】使用 Markdown 超連結格式包裝，網址統一寫 \`SOURCE_URL\`（例如：...引用內容... \`[2026-03-14 中央社](SOURCE_URL)\`）。
+   - 絕對禁止虛妄連結：不要嘗試自己填寫真實網址，交由系統自動配對。
 2. **威脅評估**：分析這些行動對台灣的整體影響與威脅程度。
 3. **戰略意圖分析**：簡述背後可能的戰略或政治目的。
 
@@ -265,8 +265,8 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
 【深度檢索與引用規範】執行時請遵守以下步驟：
 - 搜尋來源：僅限使用官方網站、學術論文或知名新聞媒體的資料。
 - 摘錄內容：針對每個關鍵論點，先引用原始網頁中的一段話。
-- 標註連結：在引用後方提供完整的「日期＋媒體名稱」的超連結。請確保連結為當下可點擊且直接連往該關鍵論點頁面的網址。
-- 最終校核：在輸出前，請再次檢查該連結是否存在於你的檢索結果中，若不確定連結的真實性，請直接註明【資料不足，無法確認】，嚴禁拼湊網址。
+- 標註連結：在引用後方，請使用 Markdown 格式標註「日期＋媒體名稱」，但網址部分請統一填寫 \`SOURCE_URL\`（例如：\`[2026-03-14 中央社](SOURCE_URL)\`）。
+- 嚴禁拼湊網址：**絕對不要**自己捏造或嘗試拼湊真實的 \`http\` 或 \`https\` 網址。系統會在後台自動將 \`SOURCE_URL\` 替換為真實且經過驗證的網址。
 
 【🔴 絕對強制指令 - 違反將導致系統錯誤 🔴】：
 1. 搜尋策略：你呼叫 Google Search 工具時，搜尋關鍵字「必須」包含年份 "${currentYear}" 與月份 "${currentMonth}月" 以及日期 "${todayStr}"，並強制加上 "after:${yesterdayStr} before:${tomorrowStr}" 參數，確保只獲取當日的資料。
@@ -277,8 +277,8 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
 請使用 Markdown 格式排版，包含以下內容：
 1. **近期重大事件**：列出具體事件。
    - 格式：請具體寫出時間點與消息來源，並「強制標示該新聞的發布日期與時間」。
-   - 連結強制要求：所有引用媒體的內容，在引用後方【必須】使用 Markdown 超連結格式包裝（例如：...引用內容... [2026-03-14 中央社](https://www.cna.com.tw/...)）。
-   - 絕對禁止虛妄連結：超連結網址必須是「真實存在」且「直接連到該篇新聞」的絕對網址。你必須從 Google Search 的結果 (Grounding Sources) 中精確複製該新聞的真實 URL。如果找不到直接連結，請不要加上超連結。
+   - 連結強制要求：所有引用媒體的內容，在引用後方【必須】使用 Markdown 超連結格式包裝，網址統一寫 \`SOURCE_URL\`（例如：...引用內容... \`[2026-03-14 中央社](SOURCE_URL)\`）。
+   - 絕對禁止虛妄連結：不要嘗試自己填寫真實網址，交由系統自動配對。
 2. **威脅評估**：分析這些行動對台灣的影響與威脅程度。
 3. **戰略意圖分析**：簡述背後可能的戰略或政治目的。
 
@@ -344,8 +344,8 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
       groundingSupports.forEach((support: any) => {
         const sStart = support.segment?.startIndex || 0;
         const sEnd = support.segment?.endIndex || 0;
-        // Check for overlap
-        if (sStart < end && sEnd > start) {
+        // Check for overlap or proximity (within 100 chars)
+        if ((sStart <= end + 100) && (sEnd >= start - 100)) {
           const indices = support.groundingChunkIndices || [];
           indices.forEach((i: number) => {
             const uri = groundingChunks[i]?.web?.uri;
@@ -359,17 +359,17 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
     processedText = processedText.replace(markdownLinkRegex, (match, linkText, url, offset) => {
       const cleanUrl = url.trim();
       
-      // 1. If the URL is already in grounding chunks, keep it
-      const isUrlInChunks = groundingChunks.some((c: any) => {
-        const chunkUri = c.web?.uri;
-        if (!chunkUri) return false;
-        // Ignore trailing slashes or query params for comparison
-        const normalize = (u: string) => u.split('?')[0].replace(/\/$/, '');
-        return normalize(chunkUri) === normalize(cleanUrl);
-      });
-      
-      if (isUrlInChunks) {
-        return `[${linkText}](${cleanUrl})`;
+      // 1. If the URL is already a valid URL and in grounding chunks, keep it
+      if (cleanUrl.startsWith('http')) {
+        const isUrlInChunks = groundingChunks.some((c: any) => {
+          const chunkUri = c.web?.uri;
+          if (!chunkUri) return false;
+          const normalize = (u: string) => u.split('?')[0].replace(/\/$/, '');
+          return normalize(chunkUri) === normalize(cleanUrl);
+        });
+        if (isUrlInChunks) {
+          return `[${linkText}](${cleanUrl})`;
+        }
       }
 
       // 2. Try to find the URL from grounding supports overlapping with this link
@@ -378,9 +378,10 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
         return `[${linkText}](${overlappingUris[0]})`;
       }
 
-      // 3. Match by title
+      // 3. Match by title/media name
       let bestMatch = uniqueAllSources.find(s => 
-        linkText.includes(s.title) || s.title.includes(linkText)
+        linkText.includes(s.title) || s.title.includes(linkText) || 
+        (s.title && linkText.split(/[\s,，。、]+/).some(word => word.length > 1 && s.title.includes(word)))
       );
       
       if (bestMatch) {
@@ -388,15 +389,11 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
       }
       
       // 4. Fallback
-      try {
-        if (cleanUrl.includes('[') || cleanUrl.includes('example.com')) {
-          return linkText;
-        }
-        new URL(cleanUrl);
+      if (cleanUrl.startsWith('http') && !cleanUrl.includes('example.com') && !cleanUrl.includes('SOURCE_URL')) {
         return `[${linkText}](${cleanUrl})`;
-      } catch (e) {
-        return linkText;
       }
+      
+      return `${linkText}【資料不足，無法確認連結】`;
     });
 
     const result = {
