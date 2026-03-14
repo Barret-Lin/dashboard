@@ -231,7 +231,7 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
 請使用 Markdown 格式排版，包含以下內容：
 1. **近期重大事件**：請分析並列出當日與台海相關的重大「軍事」、「經濟」、「外交」或「認知作戰」的事件。
    - 格式：請具體寫出時間點與消息來源，並「強制標示該新聞的發布日期與時間」。
-   - 連結強制要求：所有引用媒體的內容，「日期＋媒體名稱」均必須使用 Markdown 超連結格式（例如：[2026-03-14 中央社](https://www.cna.com.tw/...)）。
+   - 連結強制要求：所有引用媒體的內容，其「日期＋媒體名稱」【必須】使用 Markdown 超連結格式包裝（例如：[2026-03-14 中央社](https://www.cna.com.tw/...)）。請務必在內文中產生超連結！
    - 絕對禁止虛妄連結：超連結網址必須是「真實存在」且「直接連到該篇新聞」的絕對網址。你必須從 Google Search 的結果 (Grounding Sources) 中精確複製該新聞的真實 URL。如果找不到直接連結，請不要加上超連結。
 2. **威脅評估**：分析這些行動對台灣的整體影響與威脅程度。
 3. **戰略意圖分析**：簡述背後可能的戰略或政治目的。
@@ -250,7 +250,7 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
 請使用 Markdown 格式排版，包含以下內容：
 1. **近期重大事件**：列出具體事件。
    - 格式：請具體寫出時間點與消息來源，並「強制標示該新聞的發布日期與時間」。
-   - 連結強制要求：所有引用媒體的內容，「日期＋媒體名稱」均必須使用 Markdown 超連結格式（例如：[2026-03-14 中央社](https://www.cna.com.tw/...)）。
+   - 連結強制要求：所有引用媒體的內容，其「日期＋媒體名稱」【必須】使用 Markdown 超連結格式包裝（例如：[2026-03-14 中央社](https://www.cna.com.tw/...)）。請務必在內文中產生超連結！
    - 絕對禁止虛妄連結：超連結網址必須是「真實存在」且「直接連到該篇新聞」的絕對網址。你必須從 Google Search 的結果 (Grounding Sources) 中精確複製該新聞的真實 URL。如果找不到直接連結，請不要加上超連結。
 2. **威脅評估**：分析這些行動對台灣的影響與威脅程度。
 3. **戰略意圖分析**：簡述背後可能的戰略或政治目的。
@@ -276,6 +276,13 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
     const groundingChunks = groundingMetadata?.groundingChunks || [];
     const groundingSupports = groundingMetadata?.groundingSupports || [];
 
+    const allSources = groundingChunks
+      .map((chunk: any) => ({
+        title: chunk.web?.title || '未知來源',
+        uri: chunk.web?.uri || '',
+      }))
+      .filter((s: any) => s.uri);
+
     const usedChunkIndices = new Set<number>();
     if (groundingSupports.length > 0) {
       groundingSupports.forEach((support: any) => {
@@ -283,6 +290,9 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
           support.groundingChunkIndices.forEach((index: number) => usedChunkIndices.add(index));
         }
       });
+    } else {
+      // Fallback: if no supports are provided, assume all chunks are used
+      groundingChunks.forEach((_: any, index: number) => usedChunkIndices.add(index));
     }
 
     const sources = groundingChunks
@@ -296,12 +306,13 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
       .filter((s: any) => s.uri);
 
     const uniqueSources = Array.from(new Map(sources.map((s: any) => [s.uri, s])).values()) as { title: string; uri: string }[];
+    const uniqueAllSources = Array.from(new Map(allSources.map((s: any) => [s.uri, s])).values()) as { title: string; uri: string }[];
 
     let processedText = text;
     // Validate and fix markdown links [text](url)
     const markdownLinkRegex = /\[([^\]]+)\]\(([^)]+)\)/g;
     processedText = processedText.replace(markdownLinkRegex, (match, linkText, url) => {
-      const isValid = uniqueSources.some(s => s.uri === url);
+      const isValid = uniqueAllSources.some(s => s.uri === url);
       if (isValid) {
         return match;
       }
@@ -310,11 +321,11 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
       let bestMatch = null;
       try {
         const urlDomain = new URL(url).hostname;
-        bestMatch = uniqueSources.find(s => s.uri.includes(urlDomain));
+        bestMatch = uniqueAllSources.find(s => s.uri.includes(urlDomain));
       } catch (e) {}
       
       if (!bestMatch) {
-        bestMatch = uniqueSources.find(s => 
+        bestMatch = uniqueAllSources.find(s => 
           linkText.includes(s.title) || s.title.includes(linkText)
         );
       }
