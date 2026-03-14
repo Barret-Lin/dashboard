@@ -186,6 +186,21 @@ function setLocalCache(key: string, data: any) {
   }
 }
 
+export function clearDataCache() {
+  try {
+    const keysToRemove = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && (key.startsWith('intel_') || key.startsWith('threat_') || key.startsWith('timeline_') || key.startsWith('map_data_'))) {
+        keysToRemove.push(key);
+      }
+    }
+    keysToRemove.forEach(key => localStorage.removeItem(key));
+  } catch (e) {
+    // ignore
+  }
+}
+
 export async function fetchIntelligence(categoryId: string, categoryQuery: string, customApiKey?: string, forceRefresh = false, isPaidKey = false): Promise<IntelligenceData> {
   const cleanApiKey = customApiKey?.trim().replace(/[\s\uFEFF\xA0]/g, '').replace(/[^a-zA-Z0-9_-]/g, '');
   if (!cleanApiKey) {
@@ -222,11 +237,11 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
 請扮演頂尖的開源情報（OSINT）分析師。你的任務是彙整「當日（台灣時間 ${todayStr} 00:00 至 23:59）」關於中國對台灣的最新動態與新聞。
 【注意】：已取消「過去24小時」的定義，請嚴格只抓取「當日」的資料。
 
-【深度檢索與引用規範】執行時請嚴格遵守以下步驟：
-1. 搜尋來源：僅限使用官方網站、學術論文或知名新聞媒體的資料。
-2. 摘錄內容：針對每個資料來源，先引用原始網頁中的一段話，不得超出20個字。
-3. 標註連結：在引用文字上提供完整的超連結。請確保連結為當下可點擊且直接連往該資訊頁面的網址。
-4. 最終校核：在輸出前，請再次檢查該連結是否存在於你的檢索結果中，若不確定連結的真實性，請勿顯示該事件，嚴禁拼湊網址。
+【深度檢索與引用規範】執行時請遵守以下步驟：
+- 搜尋來源：僅限使用官方網站、學術論文或知名新聞媒體的資料。
+- 摘錄內容：針對每個關鍵論點，先引用原始網頁中的一段話。
+- 標註連結：在引用後方提供完整的「日期＋媒體名稱」的超連結。請確保連結為當下可點擊且直接連往該關鍵論點頁面的網址。
+- 最終校核：在輸出前，請再次檢查該連結是否存在於你的檢索結果中，若不確定連結的真實性，請直接註明【資料不足，無法確認】，嚴禁拼湊網址。
 
 【🔴 絕對強制指令 - 違反將導致系統錯誤 🔴】：
 1. 搜尋策略：你呼叫 Google Search 工具時，搜尋關鍵字「必須」包含年份 "${currentYear}" 與月份 "${currentMonth}月" 以及日期 "${todayStr}"，並強制加上 "after:${yesterdayStr} before:${tomorrowStr}" 參數，以確保搜尋引擎只回傳當日的結果。
@@ -237,7 +252,7 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
 請使用 Markdown 格式排版，包含以下內容：
 1. **近期重大事件**：請分析並列出當日與台海相關的重大「軍事」、「經濟」、「外交」或「認知作戰」的事件。
    - 格式：請具體寫出時間點與消息來源，並「強制標示該新聞的發布日期與時間」。
-   - 連結強制要求：所有引用媒體的內容，其「引用文字」【必須】使用 Markdown 超連結格式包裝（例如：[國防部偵獲多架次共機越過海峽中線](https://www.cna.com.tw/...)）。請務必在內文中產生超連結！
+   - 連結強制要求：所有引用媒體的內容，在引用後方【必須】使用 Markdown 超連結格式包裝（例如：...引用內容... [2026-03-14 中央社](https://www.cna.com.tw/...)）。
    - 絕對禁止虛妄連結：超連結網址必須是「真實存在」且「直接連到該篇新聞」的絕對網址。你必須從 Google Search 的結果 (Grounding Sources) 中精確複製該新聞的真實 URL。如果找不到直接連結，請不要加上超連結。
 2. **威脅評估**：分析這些行動對台灣的整體影響與威脅程度。
 3. **戰略意圖分析**：簡述背後可能的戰略或政治目的。
@@ -247,11 +262,11 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
     prompt = `現在精確時間是台灣時間 ${now} (YYYY-MM-DD: ${todayStr})。
 請扮演頂尖的開源情報（OSINT）分析師。你的任務是彙整「當日（台灣時間 ${todayStr} 00:00 至 23:59）」關於中國對台灣的「${categoryQuery}」最新動態與新聞。
 
-【深度檢索與引用規範】執行時請嚴格遵守以下步驟：
-1. 搜尋來源：僅限使用官方網站、學術論文或知名新聞媒體的資料。
-2. 摘錄內容：針對每個資料來源，先引用原始網頁中的一段話，不得超出20個字。
-3. 標註連結：在引用文字上提供完整的超連結。請確保連結為當下可點擊且直接連往該資訊頁面的網址。
-4. 最終校核：在輸出前，請再次檢查該連結是否存在於你的檢索結果中，若不確定連結的真實性，請勿顯示該事件，嚴禁拼湊網址。
+【深度檢索與引用規範】執行時請遵守以下步驟：
+- 搜尋來源：僅限使用官方網站、學術論文或知名新聞媒體的資料。
+- 摘錄內容：針對每個關鍵論點，先引用原始網頁中的一段話。
+- 標註連結：在引用後方提供完整的「日期＋媒體名稱」的超連結。請確保連結為當下可點擊且直接連往該關鍵論點頁面的網址。
+- 最終校核：在輸出前，請再次檢查該連結是否存在於你的檢索結果中，若不確定連結的真實性，請直接註明【資料不足，無法確認】，嚴禁拼湊網址。
 
 【🔴 絕對強制指令 - 違反將導致系統錯誤 🔴】：
 1. 搜尋策略：你呼叫 Google Search 工具時，搜尋關鍵字「必須」包含年份 "${currentYear}" 與月份 "${currentMonth}月" 以及日期 "${todayStr}"，並強制加上 "after:${yesterdayStr} before:${tomorrowStr}" 參數，確保只獲取當日的資料。
@@ -262,7 +277,7 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
 請使用 Markdown 格式排版，包含以下內容：
 1. **近期重大事件**：列出具體事件。
    - 格式：請具體寫出時間點與消息來源，並「強制標示該新聞的發布日期與時間」。
-   - 連結強制要求：所有引用媒體的內容，其「引用文字」【必須】使用 Markdown 超連結格式包裝（例如：[國防部偵獲多架次共機越過海峽中線](https://www.cna.com.tw/...)）。請務必在內文中產生超連結！
+   - 連結強制要求：所有引用媒體的內容，在引用後方【必須】使用 Markdown 超連結格式包裝（例如：...引用內容... [2026-03-14 中央社](https://www.cna.com.tw/...)）。
    - 絕對禁止虛妄連結：超連結網址必須是「真實存在」且「直接連到該篇新聞」的絕對網址。你必須從 Google Search 的結果 (Grounding Sources) 中精確複製該新聞的真實 URL。如果找不到直接連結，請不要加上超連結。
 2. **威脅評估**：分析這些行動對台灣的影響與威脅程度。
 3. **戰略意圖分析**：簡述背後可能的戰略或政治目的。
@@ -614,12 +629,11 @@ export async function fetchTimelineEvents(customApiKey?: string, forceRefresh = 
 請扮演頂尖的開源情報（OSINT）分析師。你的任務是搜尋「過去一週（台灣時間 ${lastWeekStr} 至 ${todayStr}）」關於台海局勢的重大新聞與事件。
 
 【🔴 絕對強制指令 🔴】：
-1. 搜尋策略：你呼叫 Google Search 工具時，必須搜尋過去一週內關於台海軍事、經濟、外交、認知作戰的真實重大事件。為了確保連結有效，請優先搜尋台灣主流媒體（如 CNA 中央社、LTN 自由時報、UDN 聯合報、Yahoo 新聞）。
-2. 來源網址 (url) 必須是「真實存在」且「直接連到該篇新聞」的絕對網址。**絕對禁止**捏造網址、提供媒體首頁、或提供需要付費/登入才能觀看的連結。
-3. 你必須從 Google Search 的結果 (Grounding Sources) 中，精確複製該新聞的真實 URL。如果該事件找不到直接且公開的連結，請**直接捨棄**該事件，不要將其納入。
-4. 請嚴格回傳 JSON 格式，不要包含 Markdown 語法或額外文字。
-5. 請確保事件按時間先後順序排列（最舊的在前面，最新的在後面）。
-6. 每個事件必須評估其影響力等級 (impactLevel)，範圍為 1 到 10 的整數（10 為最高威脅/影響）。
+1. 搜尋策略：你呼叫 Google Search 工具時，必須搜尋過去一週內關於台海軍事、經濟、外交、認知作戰的真實重大事件。
+2. 請嚴格回傳 JSON 格式，不要包含 Markdown 語法或額外文字。
+3. 請確保事件按時間先後順序排列（最舊的在前面，最新的在後面）。
+4. 每個事件必須評估其影響力等級 (impactLevel)，範圍為 1 到 10 的整數（10 為最高威脅/影響）。
+5. 取消超連結，保留純文字描述即可。
 
 JSON 格式範例：
 [
@@ -627,7 +641,6 @@ JSON 格式範例：
     "date": "2026-03-08",
     "title": "國防部偵獲多架次共機越過海峽中線",
     "description": "國防部今日表示，自上午起陸續偵獲多架次共機出海活動，其中部分逾越海峽中線及其延伸線...",
-    "url": "https://www.cna.com.tw/news/aipl/202603080001.aspx",
     "category": "military",
     "impactLevel": 8
   }
@@ -649,128 +662,17 @@ JSON 格式範例：
     const parsedData = JSON.parse(text);
     let eventsArray = Array.isArray(parsedData) ? parsedData : (parsedData.events || []);
     
-    // Extract valid URLs from grounding metadata
-    const groundingMetadata = response.candidates?.[0]?.groundingMetadata;
-    const groundingChunks = groundingMetadata?.groundingChunks || [];
-    const groundingSupports = groundingMetadata?.groundingSupports || [];
-    const validSources = groundingChunks
-      .map((chunk: any) => ({
-        title: chunk.web?.title || '',
-        uri: chunk.web?.uri || ''
-      }))
-      .filter((s: any) => s.uri);
-
-    const getUrisForText = (searchText: string) => {
-      if (!searchText) return [];
-      
-      const uris = new Set<string>();
-      groundingSupports.forEach((support: any) => {
-        const sStart = support.segment?.startIndex || 0;
-        const sEnd = support.segment?.endIndex || 0;
-        const segmentText = support.segment?.text || text.substring(sStart, sEnd);
-        
-        if (segmentText && segmentText.length > 10) {
-          // Remove JSON formatting characters for comparison
-          const cleanSegment = segmentText.replace(/["{}\[\]\\]/g, '').trim();
-          const cleanSearch = searchText.replace(/["{}\[\]\\]/g, '').trim();
-          
-          if (cleanSearch.includes(cleanSegment) || cleanSegment.includes(cleanSearch)) {
-            const indices = support.groundingChunkIndices || [];
-            indices.forEach((i: number) => {
-              const uri = groundingChunks[i]?.web?.uri;
-              if (uri) uris.add(uri);
-            });
-          }
-        }
-      });
-      return Array.from(uris);
-    };
-
-    // Validate and fix URLs
-    // We only keep events that have a highly confident URL match
     eventsArray = eventsArray.map((event: TimelineEvent) => {
       // Clean up markdown links in title if AI generated them
       if (event.title) {
         const mdLinkMatch = event.title.match(/\[([^\]]+)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/);
         if (mdLinkMatch) {
           event.title = mdLinkMatch[1];
-          if (!event.url || event.url.includes('[') || event.url.includes('example.com')) {
-            event.url = mdLinkMatch[2];
-          }
         }
       }
-
-      if (event.url) {
-        const cleanUrl = event.url.trim();
-        const isPlaceholder = cleanUrl.includes('[') || cleanUrl.includes('example.com');
-        
-        const normalize = (u: string) => u.split('?')[0].replace(/\/$/, '');
-        const isUrlInChunks = groundingChunks.some((c: any) => {
-          const chunkUri = c.web?.uri;
-          return chunkUri && normalize(chunkUri) === normalize(cleanUrl);
-        });
-        
-        if (isPlaceholder || !isUrlInChunks) {
-          // Try to get URI from grounding supports for the description or title
-          const urisFromDesc = getUrisForText(event.description);
-          const urisFromTitle = getUrisForText(event.title);
-          const allUris = [...urisFromDesc, ...urisFromTitle];
-          
-          if (allUris.length > 0) {
-            event.url = allUris[0];
-          } else {
-            // Fallback to title matching
-            let bestMatch = null;
-            let highestScore = 0;
-
-            for (const source of validSources) {
-              let score = 0;
-              const sourceTitleLower = source.title.toLowerCase();
-              const eventTitleLower = event.title.toLowerCase();
-              
-              // Exact or partial title match
-              if (sourceTitleLower.includes(eventTitleLower) || eventTitleLower.includes(sourceTitleLower)) {
-                score += 10;
-              }
-
-              // Keyword matching
-              const keywords = event.title.split(/[\s,，。、]+/).filter(k => k.length > 1);
-              for (const keyword of keywords) {
-                if (sourceTitleLower.includes(keyword.toLowerCase())) {
-                  score += 2;
-                }
-              }
-
-              if (score > highestScore) {
-                highestScore = score;
-                bestMatch = source;
-              }
-            }
-            
-            // Only accept the match if the score is high enough (at least some keywords matched)
-            if (bestMatch && highestScore >= 4) {
-              event.url = bestMatch.uri;
-            } else {
-              // If we can't find a strong match, but it's a valid URL format, keep it to prevent UI breakage
-              try {
-                if (isPlaceholder) {
-                  event.url = undefined;
-                } else {
-                  new URL(event.url);
-                }
-              } catch (e) {
-                event.url = undefined; // Strip if it's not even a valid URL
-              }
-            }
-          }
-        }
-      }
+      event.url = undefined;
       return event;
     });
-
-    // Filter out events that ended up with no URL if we want to be strict, 
-    // but keeping them without a URL is better than showing a wrong URL.
-    // Let's just keep them without URL so the UI doesn't make them clickable.
 
     setLocalCache(cacheKey, eventsArray);
     return eventsArray as TimelineEvent[];

@@ -52,7 +52,7 @@ const createTargetIcon = (type: string, heading: number) => {
   });
 };
 
-export const SatelliteMaps: React.FC<{ apiKey?: string; isPaidApiKey?: boolean }> = ({ apiKey, isPaidApiKey }) => {
+export const SatelliteMaps: React.FC<{ apiKey?: string; isPaidApiKey?: boolean; refreshTrigger?: number }> = ({ apiKey, isPaidApiKey, refreshTrigger = 0 }) => {
   const [lastUpdated1, setLastUpdated1] = useState<Date>(new Date());
   const [lastUpdated2, setLastUpdated2] = useState<Date>(new Date());
   const [isRefreshing1, setIsRefreshing1] = useState(false);
@@ -87,8 +87,8 @@ export const SatelliteMaps: React.FC<{ apiKey?: string; isPaidApiKey?: boolean }
   }, [apiKey, isPaidApiKey]);
 
   useEffect(() => {
-    loadData();
-  }, [loadData]);
+    loadData(refreshTrigger > 0);
+  }, [loadData, refreshTrigger]);
 
   const handleRefresh1 = useCallback(() => {
     loadData(true);

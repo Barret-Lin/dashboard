@@ -8,7 +8,7 @@ import { Crosshair, TrendingDown, Globe, RefreshCw, AlertTriangle, ExternalLink,
 import Markdown from 'react-markdown';
 import { motion, AnimatePresence } from 'motion/react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
-import { fetchIntelligence, fetchOverallThreatLevel, IntelligenceData, ThreatLevelData, apiRateManager } from './services/intelligenceService';
+import { fetchIntelligence, fetchOverallThreatLevel, IntelligenceData, ThreatLevelData, apiRateManager, clearDataCache } from './services/intelligenceService';
 import { SatelliteMaps } from './components/SatelliteMaps';
 import { TimelineView } from './components/TimelineView';
 
@@ -178,6 +178,7 @@ export default function App() {
   const [loadingDuration, setLoadingDuration] = useState<Record<string, number>>({});
   const [autoRefresh, setAutoRefresh] = useState(false);
   const [showThreatDetails, setShowThreatDetails] = useState(false);
+  const [globalRefreshTrigger, setGlobalRefreshTrigger] = useState(0);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -307,6 +308,7 @@ export default function App() {
   };
 
   useEffect(() => {
+    clearDataCache();
     loadThreatLevel();
     // loadIntelligence is handled by the activeTab dependency effect below
   }, []);
@@ -326,6 +328,8 @@ export default function App() {
   }, [autoRefresh, activeTab, customApiKey]);
 
   const handleRefreshAll = (keyOverride?: string, isPaidOverride?: boolean) => {
+    clearDataCache();
+    setGlobalRefreshTrigger(prev => prev + 1);
     const keyToUse = typeof keyOverride === 'string' ? keyOverride : customApiKey;
     const isPaidToUse = typeof isPaidOverride === 'boolean' ? isPaidOverride : isPaidApiKey;
     loadThreatLevel(keyToUse, true, isPaidToUse);
@@ -445,7 +449,7 @@ export default function App() {
           </div>
         </header>
 
-        <SatelliteMaps apiKey={customApiKey} isPaidApiKey={isPaidApiKey} />
+        <SatelliteMaps apiKey={customApiKey} isPaidApiKey={isPaidApiKey} refreshTrigger={globalRefreshTrigger} />
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           
@@ -491,6 +495,7 @@ export default function App() {
                           onClick={(e) => {
                             e.stopPropagation();
                             if (!isRateLimited && !loading[cat.id]) {
+                              clearDataCache();
                               loadIntelligence(cat.id, true);
                             }
                           }}
@@ -588,7 +593,7 @@ export default function App() {
 
         </div>
         
-        <TimelineView apiKey={customApiKey} isPaidApiKey={isPaidApiKey} />
+        <TimelineView apiKey={customApiKey} isPaidApiKey={isPaidApiKey} refreshTrigger={globalRefreshTrigger} />
       </div>
 
       {/* API Key Input Modal */}
