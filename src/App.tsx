@@ -138,7 +138,15 @@ export default function App() {
       return '';
     }
   });
+  const [isPaidApiKey, setIsPaidApiKey] = useState(() => {
+    try {
+      return sessionStorage.getItem('isPaidApiKey') === 'true';
+    } catch (e) {
+      return false;
+    }
+  });
   const [tempApiKey, setTempApiKey] = useState('');
+  const [tempIsPaidApiKey, setTempIsPaidApiKey] = useState(false);
   const [showApiKeyInput, setShowApiKeyInput] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [apiKeyModalReason, setApiKeyModalReason] = useState<'RATE_LIMIT' | 'DAILY_LIMIT' | 'MANUAL' | 'INVALID' | 'MISSING'>('MISSING');
@@ -155,18 +163,20 @@ export default function App() {
     try {
       if (customApiKey) {
         sessionStorage.setItem('customApiKey', customApiKey);
+        sessionStorage.setItem('isPaidApiKey', isPaidApiKey.toString());
       } else {
         sessionStorage.removeItem('customApiKey');
+        sessionStorage.removeItem('isPaidApiKey');
       }
     } catch (e) {
       // ignore
     }
-  }, [customApiKey]);
+  }, [customApiKey, isPaidApiKey]);
 
-  const loadThreatLevel = async (keyOverride?: string, force = false) => {
+  const loadThreatLevel = async (keyOverride?: string, force = false, isPaidOverride?: boolean) => {
     setThreatLoading(true);
     try {
-      const data = await fetchOverallThreatLevel(keyOverride ?? customApiKey, force);
+      const data = await fetchOverallThreatLevel(keyOverride ?? customApiKey, force, isPaidOverride ?? isPaidApiKey);
       if (data.isRateLimited) {
         setApiKeyModalReason(data.isDailyLimit ? 'DAILY_LIMIT' : 'RATE_LIMIT');
         setShowApiKeyInput(true);
@@ -192,14 +202,14 @@ export default function App() {
     }
   };
 
-  const loadIntelligence = async (categoryId: string, force = false, keyOverride?: string) => {
+  const loadIntelligence = async (categoryId: string, force = false, keyOverride?: string, isPaidOverride?: boolean) => {
     if (!force && intelligence[categoryId]) return;
     
     setLoading(prev => ({ ...prev, [categoryId]: true }));
     try {
       const category = CATEGORIES.find(c => c.id === categoryId);
       if (category) {
-        const data = await fetchIntelligence(category.id, category.query, keyOverride ?? customApiKey, force);
+        const data = await fetchIntelligence(category.id, category.query, keyOverride ?? customApiKey, force, isPaidOverride ?? isPaidApiKey);
         if (data.isRateLimited) {
           setApiKeyModalReason(data.isDailyLimit ? 'DAILY_LIMIT' : 'RATE_LIMIT');
           setShowApiKeyInput(true);
@@ -245,10 +255,11 @@ export default function App() {
     return () => clearInterval(interval);
   }, [autoRefresh, activeTab, customApiKey]);
 
-  const handleRefreshAll = (keyOverride?: string) => {
+  const handleRefreshAll = (keyOverride?: string, isPaidOverride?: boolean) => {
     const keyToUse = typeof keyOverride === 'string' ? keyOverride : customApiKey;
-    loadThreatLevel(keyToUse, true);
-    loadIntelligence(activeTab, true, keyToUse);
+    const isPaidToUse = typeof isPaidOverride === 'boolean' ? isPaidOverride : isPaidApiKey;
+    loadThreatLevel(keyToUse, true, isPaidToUse);
+    loadIntelligence(activeTab, true, keyToUse, isPaidToUse);
   };
 
   const activeData = intelligence[activeTab];
@@ -266,7 +277,7 @@ export default function App() {
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
                 <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
               </div>
-              <h1 className="text-3xl font-bold tracking-tight text-zinc-100 uppercase font-mono">台海戰情即時情報網 <span className="text-xs text-zinc-600 font-mono ml-2">v1.0.18</span></h1>
+              <h1 className="text-3xl font-bold tracking-tight text-zinc-100 uppercase font-mono">台海戰情即時情報網 <span className="text-xs text-zinc-600 font-mono ml-2">v1.0.19</span></h1>
             </div>
             <div className="flex items-center gap-4">
               <p className="text-zinc-500 font-mono text-[10px] tracking-widest uppercase flex items-center gap-2">
@@ -351,6 +362,7 @@ export default function App() {
               <button 
                 onClick={() => {
                   setTempApiKey(customApiKey);
+                  setTempIsPaidApiKey(isPaidApiKey);
                   setApiKeyModalReason('MANUAL');
                   setShowApiKeyInput(true);
                 }}
@@ -363,7 +375,7 @@ export default function App() {
           </div>
         </header>
 
-        <SatelliteMaps apiKey={customApiKey} />
+        <SatelliteMaps apiKey={customApiKey} isPaidApiKey={isPaidApiKey} />
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           
@@ -525,12 +537,14 @@ export default function App() {
                 const cleanKey = tempApiKey.trim().replace(/[\s\uFEFF\xA0]/g, '').replace(/[^a-zA-Z0-9_-]/g, '');
                 if (cleanKey) {
                   setCustomApiKey(cleanKey);
+                  setIsPaidApiKey(tempIsPaidApiKey);
                   setShowApiKeyInput(false);
-                  setTimeout(() => handleRefreshAll(cleanKey), 100);
+                  setTimeout(() => handleRefreshAll(cleanKey, tempIsPaidApiKey), 100);
                 } else if (apiKeyModalReason === 'MANUAL' && tempApiKey.trim() === '') {
                   setCustomApiKey('');
+                  setIsPaidApiKey(false);
                   setShowApiKeyInput(false);
-                  setTimeout(() => handleRefreshAll(''), 100);
+                  setTimeout(() => handleRefreshAll('', false), 100);
                 }
               }}>
                 <div className="relative flex items-start mb-4">
@@ -569,6 +583,20 @@ export default function App() {
                     {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
                 </div>
+                
+                <div className="flex items-center mb-6">
+                  <input
+                    id="isPaidApiKey"
+                    type="checkbox"
+                    checked={tempIsPaidApiKey}
+                    onChange={(e) => setTempIsPaidApiKey(e.target.checked)}
+                    className="w-4 h-4 text-blue-600 bg-black border-zinc-700 rounded focus:ring-blue-500 focus:ring-2"
+                  />
+                  <label htmlFor="isPaidApiKey" className="ml-2 text-sm font-medium text-zinc-300 cursor-pointer">
+                    這是一組付費 API Key (解除請求佇列限制，大幅提升載入速度)
+                  </label>
+                </div>
+
                 <div className="flex justify-end gap-3">
                   <button 
                     type="button"

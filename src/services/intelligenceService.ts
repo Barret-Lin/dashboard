@@ -113,7 +113,10 @@ class ApiRateManager {
 
 export const apiRateManager = new ApiRateManager();
 
-export async function executeWithLock<T>(task: () => Promise<T>): Promise<T> {
+export async function executeWithLock<T>(task: () => Promise<T>, bypassQueue = false): Promise<T> {
+  if (bypassQueue) {
+    return task();
+  }
   return apiRateManager.enqueue(task);
 }
 
@@ -183,7 +186,7 @@ function setLocalCache(key: string, data: any) {
   }
 }
 
-export async function fetchIntelligence(categoryId: string, categoryQuery: string, customApiKey?: string, forceRefresh = false): Promise<IntelligenceData> {
+export async function fetchIntelligence(categoryId: string, categoryQuery: string, customApiKey?: string, forceRefresh = false, isPaidKey = false): Promise<IntelligenceData> {
   const cleanApiKey = customApiKey?.trim().replace(/[\s\uFEFF\xA0]/g, '').replace(/[^a-zA-Z0-9_-]/g, '');
   if (!cleanApiKey) {
     return {
@@ -264,7 +267,7 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
         tools: [{ googleSearch: {} }],
         temperature: 0.2,
       },
-    }));
+    }), isPaidKey);
 
     const text = response.text || '';
     const groundingMetadata = response.candidates?.[0]?.groundingMetadata;
@@ -320,7 +323,7 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
   }
 }
 
-export async function fetchOverallThreatLevel(customApiKey?: string, forceRefresh = false): Promise<ThreatLevelData> {
+export async function fetchOverallThreatLevel(customApiKey?: string, forceRefresh = false, isPaidKey = false): Promise<ThreatLevelData> {
   const cleanApiKey = customApiKey?.trim().replace(/[\s\uFEFF\xA0]/g, '').replace(/[^a-zA-Z0-9_-]/g, '');
   if (!cleanApiKey) {
     return {
@@ -399,7 +402,7 @@ JSON 格式範例：
         temperature: 0.1,
         responseMimeType: 'application/json',
       },
-    }));
+    }), isPaidKey);
 
     const text = response.text || '{}';
     let parsedData;
@@ -483,7 +486,7 @@ export interface MapData {
   }[];
 }
 
-export async function fetchMapData(customApiKey?: string, forceRefresh = false): Promise<MapData | null> {
+export async function fetchMapData(customApiKey?: string, forceRefresh = false, isPaidKey = false): Promise<MapData | null> {
   const cleanApiKey = customApiKey?.trim().replace(/[\s\uFEFF\xA0]/g, '').replace(/[^a-zA-Z0-9_-]/g, '');
   if (!cleanApiKey) return null;
 
@@ -545,7 +548,7 @@ JSON 格式範例與說明：
         temperature: 0.1,
         responseMimeType: 'application/json',
       },
-    }));
+    }), isPaidKey);
 
     const text = response.text || '{}';
     const parsedData = JSON.parse(text);
