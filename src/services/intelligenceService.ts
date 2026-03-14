@@ -230,8 +230,9 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
 
 請使用 Markdown 格式排版，包含以下內容：
 1. **近期重大事件**：請分析並列出當日與台海相關的重大「軍事」、「經濟」、「外交」或「認知作戰」的事件。
-   - 格式：請具體寫出時間點與消息來源，並「強制標示該新聞的發布日期與時間」（例如：根據 CNN 於 YYYY-MM-DD HH:MM 的報導）。
-   - 警告：「絕對不要」在內文中產生任何 Markdown 網址連結（例如 [CNN 報導](https://...)），因為系統會自動在底部附上真實的來源連結。
+   - 格式：請具體寫出時間點與消息來源，並「強制標示該新聞的發布日期與時間」。
+   - 連結強制要求：所有引用媒體的內容，「日期＋媒體名稱」均必須使用 Markdown 超連結格式（例如：[2026-03-14 中央社](https://www.cna.com.tw/...)）。
+   - 絕對禁止虛妄連結：超連結網址必須是「真實存在」且「直接連到該篇新聞」的絕對網址。你必須從 Google Search 的結果 (Grounding Sources) 中精確複製該新聞的真實 URL。如果找不到直接連結，請不要加上超連結。
 2. **威脅評估**：分析這些行動對台灣的整體影響與威脅程度。
 3. **戰略意圖分析**：簡述背後可能的戰略或政治目的。
 
@@ -248,8 +249,9 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
 
 請使用 Markdown 格式排版，包含以下內容：
 1. **近期重大事件**：列出具體事件。
-   - 格式：請具體寫出時間點與消息來源，並「強制標示該新聞的發布日期與時間」（例如：根據 CNN 於 YYYY-MM-DD HH:MM 的報導）。
-   - 警告：「絕對不要」在內文中產生任何 Markdown 網址連結（例如 [CNN 報導](https://...)），因為系統會自動在底部附上真實的來源連結。
+   - 格式：請具體寫出時間點與消息來源，並「強制標示該新聞的發布日期與時間」。
+   - 連結強制要求：所有引用媒體的內容，「日期＋媒體名稱」均必須使用 Markdown 超連結格式（例如：[2026-03-14 中央社](https://www.cna.com.tw/...)）。
+   - 絕對禁止虛妄連結：超連結網址必須是「真實存在」且「直接連到該篇新聞」的絕對網址。你必須從 Google Search 的結果 (Grounding Sources) 中精確複製該新聞的真實 URL。如果找不到直接連結，請不要加上超連結。
 2. **威脅評估**：分析這些行動對台灣的影響與威脅程度。
 3. **戰略意圖分析**：簡述背後可能的戰略或政治目的。
 
@@ -295,8 +297,38 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
 
     const uniqueSources = Array.from(new Map(sources.map((s: any) => [s.uri, s])).values()) as { title: string; uri: string }[];
 
+    let processedText = text;
+    // Validate and fix markdown links [text](url)
+    const markdownLinkRegex = /\[([^\]]+)\]\(([^)]+)\)/g;
+    processedText = processedText.replace(markdownLinkRegex, (match, linkText, url) => {
+      const isValid = uniqueSources.some(s => s.uri === url);
+      if (isValid) {
+        return match;
+      }
+      
+      // Try to find a match by domain or title
+      let bestMatch = null;
+      try {
+        const urlDomain = new URL(url).hostname;
+        bestMatch = uniqueSources.find(s => s.uri.includes(urlDomain));
+      } catch (e) {}
+      
+      if (!bestMatch) {
+        bestMatch = uniqueSources.find(s => 
+          linkText.includes(s.title) || s.title.includes(linkText)
+        );
+      }
+      
+      if (bestMatch) {
+        return `[${linkText}](${bestMatch.uri})`;
+      }
+      
+      // If no valid source found, just return the text without link
+      return linkText;
+    });
+
     const result = {
-      text,
+      text: processedText,
       sources: uniqueSources,
       timestamp: Date.now(),
     };
@@ -364,10 +396,10 @@ export async function fetchOverallThreatLevel(customApiKey?: string, forceRefres
 3. 連結正確性：系統會自動抓取你參考的網頁作為 Verified Sources。請確保你只依賴「真實存在、且為最新發布」的搜尋結果。
 
 請依據以下四個面向給予 0~100 的威脅評分，並套用權重計算總分 (Total Score)：
-1. 軍事動態 (Military) - 權重 40%
-2. 經濟封鎖 (Economic) - 權重 25%
-3. 外交打壓 (Diplomatic) - 權重 20%
-4. 認知作戰 (Cognitive) - 權重 15%
+1. 軍事動態 (Military) - 權重 60%
+2. 經濟封鎖 (Economic) - 權重 20%
+3. 外交打壓 (Diplomatic) - 權重 10%
+4. 認知作戰 (Cognitive) - 權重 10%
 
 總分計算後，請依據以下標準定義威脅等級 (Level)：
 - 0~20: LOW (低威脅)
