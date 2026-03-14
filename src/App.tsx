@@ -303,7 +303,7 @@ export default function App() {
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
                 <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
               </div>
-              <h1 className="text-3xl font-bold tracking-tight text-zinc-100 uppercase font-mono">台海戰情即時情報網 <span className="text-xs text-zinc-600 font-mono ml-2">v2.0</span></h1>
+              <h1 className="text-3xl font-bold tracking-tight text-zinc-100 uppercase font-mono">台海戰情即時情報網 <span className="text-xs text-zinc-600 font-mono ml-2">v2.2</span></h1>
             </div>
             <div className="flex items-center gap-4">
               <p className="text-zinc-500 font-mono text-[10px] tracking-widest uppercase flex items-center gap-2">
@@ -415,16 +415,17 @@ export default function App() {
                 const updatedTime = categoryUpdated[cat.id];
                 const isRateLimited = apiCallCount >= 14 && !isActive;
                 return (
-                  <button
+                  <div
                     key={cat.id}
+                    role="button"
+                    tabIndex={0}
                     onClick={() => {
                       if (!isRateLimited) {
                         setActiveTab(cat.id);
                       }
                     }}
-                    disabled={isRateLimited}
                     title={isRateLimited ? "API 呼叫頻率過高，請稍後再試" : ""}
-                    className={`shrink-0 lg:w-full flex flex-col gap-1 px-4 py-3 text-left transition-all duration-200 font-mono text-sm uppercase disabled:opacity-50 disabled:cursor-not-allowed ${
+                    className={`shrink-0 lg:w-full flex flex-col gap-1 px-4 py-3 text-left transition-all duration-200 font-mono text-sm uppercase ${isRateLimited ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'} ${
                       isActive 
                         ? 'bg-[#1a1a1a] text-zinc-100 tech-border border-l-2 border-l-red-500' 
                         : 'text-zinc-500 hover:bg-[#0f0f0f] hover:text-zinc-300 border border-transparent'
@@ -445,7 +446,7 @@ export default function App() {
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            if (!isRateLimited) {
+                            if (!isRateLimited && !loading[cat.id]) {
                               loadIntelligence(cat.id, true);
                             }
                           }}
@@ -477,7 +478,7 @@ export default function App() {
                         )}
                       </div>
                     )}
-                  </button>
+                  </div>
                 );
               })}
             </div>

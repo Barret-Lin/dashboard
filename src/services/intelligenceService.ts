@@ -490,7 +490,9 @@ export interface TimelineEvent {
   date: string;
   title: string;
   description: string;
+  url?: string;
   category: 'military' | 'economic' | 'diplomatic' | 'cognitive' | 'other';
+  impactLevel: number; // 1-10
 }
 
 export async function fetchTimelineEvents(customApiKey?: string, forceRefresh = false, isPaidKey = false): Promise<TimelineEvent[]> {
@@ -501,7 +503,7 @@ export async function fetchTimelineEvents(customApiKey?: string, forceRefresh = 
   
   if (!forceRefresh) {
     const cachedData = getLocalCache(cacheKey);
-    if (cachedData) {
+    if (cachedData && Array.isArray(cachedData)) {
       return cachedData as TimelineEvent[];
     }
   }
@@ -517,6 +519,8 @@ export async function fetchTimelineEvents(customApiKey?: string, forceRefresh = 
 1. 搜尋策略：你呼叫 Google Search 工具時，必須搜尋過去一週內關於台海軍事、經濟、外交、認知作戰的重大事件。
 2. 請嚴格回傳 JSON 格式，不要包含 Markdown 語法或額外文字。
 3. 請確保事件按時間先後順序排列（最舊的在前面，最新的在後面）。
+4. 每個事件必須包含來源網址 (url)。
+5. 每個事件必須評估其影響力等級 (impactLevel)，範圍為 1 到 10 的整數（10 為最高威脅/影響）。
 
 JSON 格式範例：
 [
@@ -524,13 +528,17 @@ JSON 格式範例：
     "date": "2026-03-08",
     "title": "共機越過海峽中線",
     "description": "國防部偵獲多架次共機越過海峽中線...",
-    "category": "military"
+    "url": "https://example.com/news/123",
+    "category": "military",
+    "impactLevel": 8
   },
   {
     "date": "2026-03-10",
     "title": "中國宣布新一波農產品禁令",
     "description": "中國海關總署宣布暫停進口台灣某農產品...",
-    "category": "economic"
+    "url": "https://example.com/news/456",
+    "category": "economic",
+    "impactLevel": 5
   }
 ]`;
 
@@ -548,9 +556,10 @@ JSON 格式範例：
 
     const text = response.text || '[]';
     const parsedData = JSON.parse(text);
+    const eventsArray = Array.isArray(parsedData) ? parsedData : (parsedData.events || []);
     
-    setLocalCache(cacheKey, parsedData);
-    return parsedData as TimelineEvent[];
+    setLocalCache(cacheKey, eventsArray);
+    return eventsArray as TimelineEvent[];
   } catch (error) {
     console.error("Error fetching timeline events:", error);
     return [];
