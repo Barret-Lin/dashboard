@@ -578,6 +578,12 @@ export async function fetchTimelineEvents(customApiKey?: string, forceRefresh = 
   const prompt = `現在精確時間是台灣時間 ${now} (YYYY-MM-DD: ${todayStr})。
 請扮演頂尖的開源情報（OSINT）分析師。你的任務是搜尋「過去一週（台灣時間 ${lastWeekStr} 至 ${todayStr}）」關於台海局勢的重大新聞與事件。
 
+【深度檢索與引用規範】執行時請嚴格遵守以下步驟：
+1. 搜尋來源：僅限使用官方網站、學術論文或知名新聞媒體的資料。
+2. 摘錄內容：針對每個關鍵論點，先引用原始網頁中的一段話，不得超出20個字。請將這段摘錄文字填入 JSON 的 \`title\` 欄位。
+3. 標註連結：在引用文字上提供完整的超連結。請確保連結為當下可點擊且直接連往該資訊頁面的網址。請將真實網址填入 JSON 的 \`url\` 欄位。
+4. 最終校核：在輸出前，請再次檢查該連結是否存在於你的檢索結果中，若不確定連結的真實性，請勿顯示該事件，嚴禁拼湊網址。
+
 【🔴 絕對強制指令 🔴】：
 1. 搜尋策略：你呼叫 Google Search 工具時，必須搜尋過去一週內關於台海軍事、經濟、外交、認知作戰的真實重大事件。為了確保連結有效，請優先搜尋台灣主流媒體（如 CNA 中央社、LTN 自由時報、UDN 聯合報、Yahoo 新聞）。
 2. 來源網址 (url) 必須是「真實存在」且「直接連到該篇新聞」的絕對網址。**絕對禁止**捏造網址、提供媒體首頁、或提供需要付費/登入才能觀看的連結。
@@ -590,7 +596,7 @@ JSON 格式範例：
 [
   {
     "date": "2026-03-08",
-    "title": "共機越過海峽中線",
+    "title": "國防部偵獲多架次共機越過海峽中線",
     "description": "國防部偵獲多架次共機越過海峽中線...",
     "url": "https://www.cna.com.tw/news/aipl/202603080001.aspx",
     "category": "military",
@@ -627,6 +633,17 @@ JSON 格式範例：
     // Validate and fix URLs
     // We only keep events that have a highly confident URL match
     eventsArray = eventsArray.map((event: TimelineEvent) => {
+      // Clean up markdown links in title if AI generated them
+      if (event.title) {
+        const mdLinkMatch = event.title.match(/\[([^\]]+)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/);
+        if (mdLinkMatch) {
+          event.title = mdLinkMatch[1];
+          if (!event.url || event.url.includes('[') || event.url.includes('example.com')) {
+            event.url = mdLinkMatch[2];
+          }
+        }
+      }
+
       if (event.url) {
         const isPlaceholder = event.url.includes('[') || event.url.includes('example.com');
         const isUrlValid = validSources.some((s: any) => s.uri === event.url);
