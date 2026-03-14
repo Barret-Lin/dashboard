@@ -240,20 +240,19 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
 【深度檢索與引用規範】執行時請遵守以下步驟：
 - 搜尋來源：僅限使用官方網站、學術論文或知名新聞媒體的資料。
 - 摘錄內容：針對每個關鍵論點，先引用原始網頁中的一段話。
-- 標註連結：在引用後方提供完整的「日期＋媒體名稱」的超連結。請確保連結為當下可點擊且直接連往該新聞頁面的網址。
-- 嚴禁拼湊網址：請直接從搜尋結果中複製真實的 URL，絕對不要自己捏造或嘗試拼湊網址。
+- 標註來源：在引用後方，請以純文字括號標註「日期＋媒體名稱」（例如：【2026-03-14 中央社】）。絕對不要使用 Markdown 超連結格式，也不要附上網址。
+- 嚴禁提供網址：報告內文請保持純文字閱讀體驗，系統會在下方統一列出參考來源，內文不需要任何網址。
 
 【🔴 絕對強制指令 - 違反將導致系統錯誤 🔴】：
 1. 搜尋策略：你呼叫 Google Search 工具時，搜尋關鍵字「必須」包含年份 "${currentYear}" 與月份 "${currentMonth}月" 以及日期 "${todayStr}"，並強制加上 "after:${yesterdayStr} before:${tomorrowStr}" 參數，以確保搜尋引擎只回傳當日的結果。
 2. 來源審查（極度重要）：在閱讀搜尋結果時，請「嚴格檢查」每篇文章的發布精確時間。不在定義抓取資料時間週期內（非 ${todayStr} 當日）的來源需「嚴格全部捨棄」，絕對不可寫入報告，也不可作為 Verified Sources。
 3. 寧缺勿濫：如果搜尋後發現「沒有」當日的最新重大消息，請直接回答「當日無重大事件」，絕對不允許拿舊新聞來湊數。
-4. 連結正確性：系統會自動抓取你參考的網頁作為 Verified Sources。請確保你只依賴「真實存在、且為最新發布」的搜尋結果，不要自己發明或猜測網址。
+4. 來源正確性：系統會自動抓取你參考的網頁作為 Verified Sources。請確保你只依賴「真實存在、且為最新發布」的搜尋結果。
 
 請使用 Markdown 格式排版，包含以下內容：
 1. **近期重大事件**：請分析並列出當日與台海相關的重大「軍事」、「經濟」、「外交」或「認知作戰」的事件。
    - 格式：請具體寫出時間點與消息來源，並「強制標示該新聞的發布日期與時間」。
-   - 連結強制要求：所有引用媒體的內容，在引用後方【必須】使用 Markdown 超連結格式包裝（例如：...引用內容... [2026-03-14 中央社](https://www.cna.com.tw/...)）。
-   - 絕對禁止虛妄連結：超連結網址必須是真實存在且直接連到該篇新聞的絕對網址。
+   - 來源標註要求：所有引用媒體的內容，在引用後方【必須】以純文字標註來源（例如：...引用內容... 【2026-03-14 中央社】），絕對禁止產生超連結。
 2. **威脅評估**：分析這些行動對台灣的整體影響與威脅程度。
 3. **戰略意圖分析**：簡述背後可能的戰略或政治目的。
 
@@ -265,20 +264,19 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
 【深度檢索與引用規範】執行時請遵守以下步驟：
 - 搜尋來源：僅限使用官方網站、學術論文或知名新聞媒體的資料。
 - 摘錄內容：針對每個關鍵論點，先引用原始網頁中的一段話。
-- 標註連結：在引用後方提供完整的「日期＋媒體名稱」的超連結。請確保連結為當下可點擊且直接連往該新聞頁面的網址。
-- 嚴禁拼湊網址：請直接從搜尋結果中複製真實的 URL，絕對不要自己捏造或嘗試拼湊網址。
+- 標註來源：在引用後方，請以純文字括號標註「日期＋媒體名稱」（例如：【2026-03-14 中央社】）。絕對不要使用 Markdown 超連結格式，也不要附上網址。
+- 嚴禁提供網址：報告內文請保持純文字閱讀體驗，系統會在下方統一列出參考來源，內文不需要任何網址。
 
 【🔴 絕對強制指令 - 違反將導致系統錯誤 🔴】：
 1. 搜尋策略：你呼叫 Google Search 工具時，搜尋關鍵字「必須」包含年份 "${currentYear}" 與月份 "${currentMonth}月" 以及日期 "${todayStr}"，並強制加上 "after:${yesterdayStr} before:${tomorrowStr}" 參數，確保只獲取當日的資料。
 2. 來源審查（極度重要）：在閱讀搜尋結果時，請「嚴格檢查」每篇文章的發布精確時間。不在定義抓取資料時間週期內（非 ${todayStr} 當日）的來源需「嚴格全部捨棄」，絕對不可寫入報告，也不可作為 Verified Sources。
 3. 寧缺勿濫：如果搜尋後發現「沒有」當日的最新重大消息，請直接回答「當日無重大事件」，絕對不允許拿舊新聞來湊數。
-4. 連結正確性：系統會自動抓取你參考的網頁作為 Verified Sources。請確保你只依賴「真實存在、且為最新發布」的搜尋結果，不要自己發明或猜測網址。
+4. 來源正確性：系統會自動抓取你參考的網頁作為 Verified Sources。請確保你只依賴「真實存在、且為最新發布」的搜尋結果。
 
 請使用 Markdown 格式排版，包含以下內容：
 1. **近期重大事件**：列出具體事件。
    - 格式：請具體寫出時間點與消息來源，並「強制標示該新聞的發布日期與時間」。
-   - 連結強制要求：所有引用媒體的內容，在引用後方【必須】使用 Markdown 超連結格式包裝（例如：...引用內容... [2026-03-14 中央社](https://www.cna.com.tw/...)）。
-   - 絕對禁止虛妄連結：超連結網址必須是真實存在且直接連到該篇新聞的絕對網址。
+   - 來源標註要求：所有引用媒體的內容，在引用後方【必須】以純文字標註來源（例如：...引用內容... 【2026-03-14 中央社】），絕對禁止產生超連結。
 2. **威脅評估**：分析這些行動對台灣的影響與威脅程度。
 3. **戰略意圖分析**：簡述背後可能的戰略或政治目的。
 
@@ -336,91 +334,11 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
     const uniqueAllSources = Array.from(new Map(allSources.map((s: any) => [s.uri, s])).values()) as { title: string; uri: string }[];
 
     let processedText = text;
-    // Validate and fix markdown links [text](url)
-    const markdownLinkRegex = /\[([^\]]+)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g;
     
-    const getUrisForRange = (start: number, end: number) => {
-      const uris = new Set<string>();
-      groundingSupports.forEach((support: any) => {
-        const sStart = support.segment?.startIndex || 0;
-        const sEnd = support.segment?.endIndex || 0;
-        // Check for strict overlap
-        if (sStart <= end && sEnd >= start) {
-          const indices = support.groundingChunkIndices || [];
-          indices.forEach((i: number) => {
-            const uri = groundingChunks[i]?.web?.uri;
-            if (uri) uris.add(uri);
-          });
-        }
-      });
-      return Array.from(uris);
-    };
-
-    processedText = processedText.replace(markdownLinkRegex, (match, linkText, url, offset) => {
-      const cleanUrl = url.trim();
-      
-      // 1. Try to find the URL from grounding supports strictly overlapping with this link
-      const overlappingUris = getUrisForRange(offset, offset + match.length);
-      if (overlappingUris.length > 0) {
-        // If the AI's provided URL is in the overlapping URIs, prefer it
-        if (overlappingUris.includes(cleanUrl)) {
-          return `[${linkText}](${cleanUrl})`;
-        }
-        return `[${linkText}](${overlappingUris[0]})`;
-      }
-
-      // 2. If the URL is already a valid URL and in grounding chunks, keep it
-      if (cleanUrl.startsWith('http')) {
-        const isUrlInChunks = groundingChunks.some((c: any) => {
-          const chunkUri = c.web?.uri;
-          if (!chunkUri) return false;
-          const normalize = (u: string) => u.split('?')[0].replace(/\/$/, '');
-          return normalize(chunkUri) === normalize(cleanUrl);
-        });
-        if (isUrlInChunks) {
-          return `[${linkText}](${cleanUrl})`;
-        }
-      }
-
-      // 3. Match by title/media name
-      let bestMatch = uniqueAllSources.find(s => 
-        linkText.includes(s.title) || s.title.includes(linkText) || 
-        (s.title && linkText.split(/[\s,，。、]+/).some(word => word.length > 1 && s.title.includes(word)))
-      );
-      
-      if (bestMatch) {
-        return `[${linkText}](${bestMatch.uri})`;
-      }
-      
-      // 4. If it was a valid-looking URL, just trust it
-      if (cleanUrl.startsWith('http') && !cleanUrl.includes('example.com') && !cleanUrl.includes('SOURCE_URL')) {
-        return `[${linkText}](${cleanUrl})`;
-      }
-      
-      return `[${linkText}](#)`;
-    });
-
-    // Also try to match plain text brackets like [2026-03-14 中央社] or [1] that are not followed by (url)
-    const plainBracketRegex = /\[(\d{4}-\d{2}-\d{2}[^\]]*|\d+)\](?!\()/g;
-    processedText = processedText.replace(plainBracketRegex, (match, linkText, offset) => {
-      // 1. Try to find the URL from grounding supports strictly overlapping with this link
-      const overlappingUris = getUrisForRange(offset, offset + match.length);
-      if (overlappingUris.length > 0) {
-        return `[${linkText}](${overlappingUris[0]})`;
-      }
-
-      // 2. Match by title
-      let bestMatch = uniqueAllSources.find(s => 
-        linkText.includes(s.title) || s.title.includes(linkText) || 
-        (s.title && linkText.split(/[\s,，。、]+/).some(word => word.length > 1 && s.title.includes(word)))
-      );
-      
-      if (bestMatch) {
-        return `[${linkText}](${bestMatch.uri})`;
-      }
-      
-      return `[${linkText}](#)`;
-    });
+    // Strip any markdown links that the AI might have still generated
+    // e.g., [2026-03-14 中央社](https://...) -> 【2026-03-14 中央社】
+    const markdownLinkRegex = /\[([^\]]+)\]\([^)\s]+(?:\s+"[^"]*")?\)/g;
+    processedText = processedText.replace(markdownLinkRegex, '【$1】');
 
     const result = {
       text: processedText,
