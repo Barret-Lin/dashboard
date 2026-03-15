@@ -519,22 +519,49 @@ export default function App() {
                       </div>
                     </div>
                     {(loading[cat.id] || loadingDuration[cat.id] !== undefined) && (
-                      <div className="text-[10px] font-mono text-zinc-600 ml-7 flex items-center gap-1">
-                        <Clock className={`w-3 h-3 ${loading[cat.id] ? 'animate-pulse text-blue-500' : ''}`} />
-                        <span className={loading[cat.id] ? 'text-blue-500' : ''}>
-                          {(() => {
-                            if (loading[cat.id] && loadingStartTime[cat.id]) {
-                              const elapsed = Math.max(0, currentTime.getTime() - loadingStartTime[cat.id].getTime());
-                              return `${Math.floor(elapsed / 60000).toString().padStart(2, '0')}:${(Math.floor(elapsed / 1000) % 60).toString().padStart(2, '0')}`;
-                            } else if (loadingDuration[cat.id] !== undefined) {
-                              const duration = loadingDuration[cat.id];
-                              return `${Math.floor(duration / 60000).toString().padStart(2, '0')}:${(Math.floor(duration / 1000) % 60).toString().padStart(2, '0')}`;
-                            }
-                            return '00:00';
-                          })()}
-                        </span>
-                        {!loading[cat.id] && loadingDuration[cat.id] !== undefined && (
-                          <span className="text-[9px] ml-1 opacity-70">載入耗時</span>
+                      <div className="text-[10px] font-mono text-zinc-600 ml-7 flex flex-col gap-1 mt-1">
+                        <div className="flex items-center justify-between w-full">
+                          <div className="flex items-center gap-1">
+                            <Clock className={`w-3 h-3 ${loading[cat.id] ? 'animate-pulse text-blue-500' : ''}`} />
+                            <span className={loading[cat.id] ? 'text-blue-500' : ''}>
+                              {(() => {
+                                if (loading[cat.id] && loadingStartTime[cat.id]) {
+                                  const elapsed = Math.max(0, currentTime.getTime() - loadingStartTime[cat.id].getTime());
+                                  return `${Math.floor(elapsed / 60000).toString().padStart(2, '0')}:${(Math.floor(elapsed / 1000) % 60).toString().padStart(2, '0')}`;
+                                } else if (loadingDuration[cat.id] !== undefined) {
+                                  const duration = loadingDuration[cat.id];
+                                  return `${Math.floor(duration / 60000).toString().padStart(2, '0')}:${(Math.floor(duration / 1000) % 60).toString().padStart(2, '0')}`;
+                                }
+                                return '00:00';
+                              })()}
+                            </span>
+                          </div>
+                          {loading[cat.id] && loadingStartTime[cat.id] && (
+                            <span className="text-blue-500/80 text-[9px]">
+                              {(() => {
+                                const elapsed = Math.max(0, currentTime.getTime() - loadingStartTime[cat.id].getTime());
+                                const estimatedTotal = 15000; // 15 seconds
+                                const remaining = Math.max(0, estimatedTotal - elapsed);
+                                if (remaining > 0) {
+                                  return `EST: ${Math.ceil(remaining / 1000)}s`;
+                                }
+                                return 'FINISHING...';
+                              })()}
+                            </span>
+                          )}
+                          {!loading[cat.id] && loadingDuration[cat.id] !== undefined && (
+                            <span className="text-[9px] opacity-70">載入耗時</span>
+                          )}
+                        </div>
+                        {loading[cat.id] && loadingStartTime[cat.id] && (
+                          <div className="w-full h-1 bg-zinc-800 rounded-full overflow-hidden">
+                            <div 
+                              className="h-full bg-blue-500 transition-all duration-1000 ease-linear"
+                              style={{ 
+                                width: `${Math.min(100, (Math.max(0, currentTime.getTime() - loadingStartTime[cat.id].getTime()) / 15000) * 100)}%` 
+                              }}
+                            />
+                          </div>
                         )}
                       </div>
                     )}
@@ -577,7 +604,34 @@ export default function App() {
                         <div className="absolute inset-0 border-2 border-t-red-500 rounded-full animate-spin"></div>
                         <Radar className="absolute inset-0 m-auto w-8 h-8 text-red-500/50 animate-pulse" />
                       </div>
-                      <p className="font-mono text-sm animate-pulse">INTERCEPTING SIGNALS...</p>
+                      <p className="font-mono text-sm animate-pulse mb-2">INTERCEPTING SIGNALS...</p>
+                      {loadingStartTime[activeTab] && (
+                        <div className="flex flex-col items-center w-48 mt-2">
+                          <div className="w-full h-1 bg-zinc-800 rounded-full overflow-hidden mb-1">
+                            <div 
+                              className="h-full bg-red-500 transition-all duration-1000 ease-linear"
+                              style={{ 
+                                width: `${Math.min(100, (Math.max(0, currentTime.getTime() - loadingStartTime[activeTab].getTime()) / 15000) * 100)}%` 
+                              }}
+                            />
+                          </div>
+                          <div className="flex justify-between w-full text-[10px] font-mono text-zinc-600">
+                            <span>
+                              {(() => {
+                                const elapsed = Math.max(0, currentTime.getTime() - loadingStartTime[activeTab].getTime());
+                                return `${Math.floor(elapsed / 60000).toString().padStart(2, '0')}:${(Math.floor(elapsed / 1000) % 60).toString().padStart(2, '0')}`;
+                              })()}
+                            </span>
+                            <span>
+                              {(() => {
+                                const elapsed = Math.max(0, currentTime.getTime() - loadingStartTime[activeTab].getTime());
+                                const remaining = Math.max(0, 15000 - elapsed);
+                                return remaining > 0 ? `EST: ${Math.ceil(remaining / 1000)}s` : 'FINISHING...';
+                              })()}
+                            </span>
+                          </div>
+                        </div>
+                      )}
                     </motion.div>
                   ) : activeData ? (
                     <motion.div
