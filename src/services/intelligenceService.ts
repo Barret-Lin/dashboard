@@ -249,6 +249,7 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
 1. **近期重大事件**：請分析並列出當日與台海相關的重大「軍事」、「經濟」、「外交」或「認知作戰」的事件。
    - 格式：請具體寫出時間點與消息來源，並「強制標示該新聞的發布日期與時間」。
    - 連結強制要求：請務必將超連結放在引號「」的外面，絕對不要把引號或引言包進超連結中。正確格式：...「引用不超過10字」 [2026-03-14 中央社](https://www.cna.com.tw/...)。
+   - 唯一性要求：每一條引用必須對應其「專屬」的原始網頁連結。嚴禁多個不同來源指向同一個網址。如果你引用了三個不同的媒體，就必須提供三個不同的真實網址。
 2. **威脅評估**：分析這些行動對台灣的整體影響與威脅程度。
 3. **戰略意圖分析**：簡述背後可能的戰略或政治目的。
 
@@ -273,6 +274,7 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
 1. **近期重大事件**：列出具體事件。
    - 格式：請具體寫出時間點與消息來源，並「強制標示該新聞的發布日期與時間」。
    - 連結強制要求：請務必將超連結放在引號「」的外面，絕對不要把引號或引言包進超連結中。正確格式：...「引用不超過10字」 [2026-03-14 中央社](https://www.cna.com.tw/...)。
+   - 唯一性要求：每一條引用必須對應其「專屬」的原始網頁連結。嚴禁多個不同來源指向同一個網址。如果你引用了三個不同的媒體，就必須提供三個不同的真實網址。
 2. **威脅評估**：分析這些行動對台灣的影響與威脅程度。
 3. **戰略意圖分析**：簡述背後可能的戰略或政治目的。
 
@@ -331,7 +333,7 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
 
     let processedText = text;
     
-    // 5. 落實防偽超連結驗證機制 (全局與局部綜合驗證版)
+    // 5. 落實防偽超連結驗證機制 (極致精確版：定向搜尋 + 媒體名稱強匹配)
     const markdownLinkRegex = /\[([^\]]+)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g;
     
     processedText = processedText.replace(markdownLinkRegex, (match, linkText, url, offset) => {
@@ -343,7 +345,6 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
       let actualLinkText = linkText;
       
       // 修正 AI 將引號或部分引言包進超連結的錯誤格式
-      // 例如: "[影片」 2026-03-15 中央社](url)" -> prefix: "影片」 ", actualLinkText: "2026-03-15 中央社"
       const malformedMatch = linkText.match(/^(.*?[」】"']\s*)(.+)$/);
       if (malformedMatch) {
         prefix = malformedMatch[1];
@@ -353,40 +354,41 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
       const parts = actualLinkText.trim().split(/\s+/);
       const publisherName = parts.length > 1 ? parts[parts.length - 1] : actualLinkText;
 
-      // 1. 尋找與此引言最相關的 Grounding Support
-      // 搜尋範圍：連結前方 150 字元 (涵蓋引言) 到連結結束
-      const searchStart = Math.max(0, offset - 150);
-      const searchEnd = offset + match.length;
-      
-      const contextualUris = new Set<string>();
-      let closestSupport: any = null;
-      let minDistance = Infinity;
+      // 1. 尋找支撐此連結文字的 Grounding Support
+      // 我們尋找「結束位置」最接近連結起點的 Support，且距離不能太遠 (例如 60 字元內)
+      let bestSupport: any = null;
+      let minDistance = 60; // 嚴格限制距離，防止跨主題誤配
 
       groundingSupports.forEach((support: any) => {
         const sStart = support.segment?.startIndex || 0;
         const sEnd = support.segment?.endIndex || 0;
         
-        // 檢查此 support 是否落在我們的搜尋視窗內
-        if (sStart <= searchEnd && sEnd >= searchStart) {
-          const indices = support.groundingChunkIndices || [];
-          indices.forEach((i: number) => {
-            const uri = groundingChunks[i]?.web?.uri;
-            if (uri) contextualUris.add(uri);
-          });
-          
-          // 計算 support 結尾與連結起點的距離 (越近代表越有可能是該引言的來源)
-          const distance = Math.abs(offset - sEnd);
-          if (distance < minDistance) {
-            minDistance = distance;
-            closestSupport = support;
+        // 情況 A: Support 結束在連結之前 (最常見)
+        if (sEnd <= offset) {
+          const dist = offset - sEnd;
+          if (dist < minDistance) {
+            minDistance = dist;
+            bestSupport = support;
           }
+        }
+        // 情況 B: 連結被包在 Support 範圍內
+        else if (sStart <= offset && sEnd >= offset + match.length) {
+          bestSupport = support;
+          minDistance = 0;
         }
       });
 
-      const candidateUrisArray = Array.from(contextualUris);
+      if (!bestSupport) {
+        // 如果找不到鄰近的支撐來源，嘗試在全局搜尋結果中找媒體匹配，否則標註不確定
+        const globalMatch = uniqueAllSources.find(s => s.title.includes(publisherName));
+        if (globalMatch) return `${prefix}[${actualLinkText}](${globalMatch.uri})`;
+        return `${prefix}${actualLinkText}【資料不足，無法確認】`;
+      }
 
-      if (candidateUrisArray.length === 0) {
-        // 如果在這段文字附近完全找不到 Google Search 的底層支持來源，直接捨棄
+      const indices = bestSupport.groundingChunkIndices || [];
+      const candidateChunks = indices.map((i: number) => groundingChunks[i]).filter(Boolean);
+
+      if (candidateChunks.length === 0) {
         return `${prefix}${actualLinkText}【資料不足，無法確認】`;
       }
 
@@ -399,37 +401,30 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
         }
       };
 
-      // 消歧義 1: AI 提供的網址剛好完全命中其中一個候選網址
-      const exactMatch = candidateUrisArray.find(u => normalizeUrl(u) === normalizeUrl(cleanUrl));
-      if (exactMatch) return `${prefix}[${actualLinkText}](${exactMatch})`;
-
-      // 消歧義 2: AI 提供的網域命中其中一個候選網址
-      if (aiDomain) {
-        const domainMatch = candidateUrisArray.find(u => {
-          try { return new URL(u).hostname.includes(aiDomain); } catch(e) { return false; }
-        });
-        if (domainMatch) return `${prefix}[${actualLinkText}](${domainMatch})`;
-      }
-
-      // 消歧義 3: 媒體名稱命中其中一個候選網址的標題
+      // 消歧義策略：
+      // 1. 優先匹配媒體名稱 (最準確)
       if (publisherName.length > 1) {
-        const titleMatch = candidateUrisArray.find(u => {
-          const source = uniqueAllSources.find(s => s.uri === u);
-          return source && source.title.includes(publisherName);
+        const titleMatch = candidateChunks.find(chunk => 
+          (chunk.web?.title && chunk.web.title.includes(publisherName)) ||
+          (chunk.web?.uri && chunk.web.uri.includes(publisherName.toLowerCase()))
+        );
+        if (titleMatch?.web?.uri) return `${prefix}[${actualLinkText}](${titleMatch.web.uri})`;
+      }
+
+      // 2. 匹配 AI 提供的網域
+      if (aiDomain) {
+        const domainMatch = candidateChunks.find(chunk => {
+          try { return chunk.web?.uri && new URL(chunk.web.uri).hostname.includes(aiDomain); } catch(e) { return false; }
         });
-        if (titleMatch) return `${prefix}[${actualLinkText}](${titleMatch})`;
+        if (domainMatch?.web?.uri) return `${prefix}[${actualLinkText}](${domainMatch.web.uri})`;
       }
 
-      // 消歧義 4: 預設使用距離最近的支持來源的第一個網址
-      if (closestSupport) {
-        const indices = closestSupport.groundingChunkIndices || [];
-        const closestUris = indices.map((i: number) => groundingChunks[i]?.web?.uri).filter(Boolean);
-        if (closestUris.length > 0) {
-          return `${prefix}[${actualLinkText}](${closestUris[0]})`;
-        }
-      }
+      // 3. 如果 AI 提供的網址本身就在候選清單中
+      const exactMatch = candidateChunks.find(chunk => chunk.web?.uri && normalizeUrl(chunk.web.uri) === normalizeUrl(cleanUrl));
+      if (exactMatch?.web?.uri) return `${prefix}[${actualLinkText}](${exactMatch.web.uri})`;
 
-      return `${prefix}[${actualLinkText}](${candidateUrisArray[0]})`;
+      // 4. 最後手段：使用該 Support 的第一個候選網址
+      return `${prefix}[${actualLinkText}](${candidateChunks[0].web?.uri || cleanUrl})`;
     });
 
     const result = {
