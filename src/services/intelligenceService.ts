@@ -222,6 +222,7 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
   const todayStr = getLocalDateString(0);
   const yesterdayStr = getLocalDateString(-1);
   const tomorrowStr = getLocalDateString(1);
+  const oneWeekAgoStr = getLocalDateString(-7);
   
   const d = new Date();
   const currentYear = d.getFullYear();
@@ -256,7 +257,7 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
 請確保資訊是最新的，並基於真實的新聞報導與社群動態。`;
   } else {
     prompt = `現在精確時間是當地時間 ${now} (YYYY-MM-DD: ${todayStr})。
-請扮演頂尖的開源情報（OSINT）分析師。你的任務是彙整「當日（當地時間 ${todayStr} 00:00 至 23:59）」關於中國對台灣的「${categoryQuery}」最新動態與新聞。
+請扮演頂尖的開源情報（OSINT）分析師。你的任務是彙整「過去一週（當地時間 ${oneWeekAgoStr} 至 ${todayStr}）」關於中國對台灣的「${categoryQuery}」最新動態與新聞。
 
 【深度檢索與引用規範】執行時請遵守以下步驟：
 1. 搜尋來源：僅限使用官方網站、學術論文或知名新聞媒體的資料。
@@ -265,9 +266,9 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
 4. 最終校核：在輸出前，請再次檢查該連結是否存在於你的檢索結果中。絕對禁止虛妄連結：超連結網址必須是「真實存在」且「直接連到該篇新聞」的絕對網址。你必須從 Google Search 的結果 (Grounding Sources) 中精確複製該新聞的真實 URL。如果找不到直接連結，請直接註明【資料不足，無法確認】，嚴禁拼湊網址。
 
 【🔴 絕對強制指令 - 違反將導致系統錯誤 🔴】：
-1. 搜尋策略：你呼叫 Google Search 工具時，搜尋關鍵字「必須」包含年份 "${currentYear}" 與月份 "${currentMonth}月" 以及日期 "${todayStr}"，並強制加上 "after:${yesterdayStr} before:${tomorrowStr}" 參數，確保只獲取當日的資料。
-2. 來源審查（極度重要）：在閱讀搜尋結果時，請「嚴格檢查」每篇文章的發布精確時間。不在定義抓取資料時間週期內（非 ${todayStr} 當日）的來源需「嚴格全部捨棄」，絕對不可寫入報告，也不可作為 Verified Sources。
-3. 寧缺勿濫：如果搜尋後發現「沒有」當日的最新重大消息，請直接回答「當日無重大事件」，絕對不允許拿舊新聞來湊數。
+1. 搜尋策略：你呼叫 Google Search 工具時，搜尋關鍵字「必須」包含年份 "${currentYear}" 與月份 "${currentMonth}月" 以及日期 "${todayStr}"，並強制加上 "after:${oneWeekAgoStr} before:${tomorrowStr}" 參數，確保只獲取過去一週的資料。
+2. 來源審查（極度重要）：在閱讀搜尋結果時，請「嚴格檢查」每篇文章的發布精確時間。不在定義抓取資料時間週期內（非 ${oneWeekAgoStr} 至 ${todayStr}）的來源需「嚴格全部捨棄」，絕對不可寫入報告，也不可作為 Verified Sources。
+3. 寧缺勿濫：如果搜尋後發現「沒有」過去一週的最新重大消息，請直接回答「過去一週無重大事件」，絕對不允許拿舊新聞來湊數。
 4. 來源正確性：系統會自動抓取你參考的網頁作為 Verified Sources。請確保你只依賴「真實存在、且為最新發布」的搜尋結果。
 
 請使用 Markdown 格式排版，包含以下內容：
@@ -375,8 +376,20 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
       'cnn': 'cnn.com',
     };
 
+    const usedUris = new Set<string>();
+
+    const normalizeUrl = (u: string) => {
+      try {
+        const parsed = new URL(u);
+        return parsed.origin + parsed.pathname.replace(/\/$/, '');
+      } catch {
+        return u.split('?')[0].replace(/\/$/, '');
+      }
+    };
+
     processedText = processedText.replace(markdownLinkRegex, (match, linkText, url, offset) => {
       const cleanUrl = url.trim();
+      const cleanUrlNorm = normalizeUrl(cleanUrl);
       let aiDomain = '';
       try { aiDomain = new URL(cleanUrl).hostname.replace(/^www\./, '').toLowerCase(); } catch(e) {}
 
@@ -394,84 +407,95 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
       const parts = actualLinkText.trim().split(/\s+/);
       const publisherName = parts.length > 1 ? parts[parts.length - 1].toLowerCase() : pubLower;
 
-      // 1. 尋找與此引言重疊的 Grounding Support (局部搜尋)
-      const searchStart = Math.max(0, offset - 150);
-      const searchEnd = offset + match.length;
-      
+      // 1. 尋找與此引言相關的 Grounding Support (局部搜尋)
       const localChunkIndices = new Set<number>();
+      
+      // 優先尋找直接覆蓋超連結，或在超連結前方 50 字元內結束的 support
       groundingSupports.forEach((support: any) => {
         const sStart = support.segment?.startIndex || 0;
         const sEnd = support.segment?.endIndex || 0;
-        if (sStart <= searchEnd && sEnd >= searchStart) {
+        if ((sStart <= offset && sEnd >= offset) || (sEnd <= offset && offset - sEnd <= 50)) {
           const indices = support.groundingChunkIndices || [];
           indices.forEach((i: number) => localChunkIndices.add(i));
         }
       });
 
-      const candidateIndices = localChunkIndices.size > 0 ? Array.from(localChunkIndices) : availableChunks.map(c => c.index);
+      // 如果找不到，放寬到前方 150 字元
+      if (localChunkIndices.size === 0) {
+        groundingSupports.forEach((support: any) => {
+          const sStart = support.segment?.startIndex || 0;
+          const sEnd = support.segment?.endIndex || 0;
+          if (sEnd <= offset && offset - sEnd <= 150) {
+            const indices = support.groundingChunkIndices || [];
+            indices.forEach((i: number) => localChunkIndices.add(i));
+          }
+        });
+      }
+
+      const candidateIndices = Array.from(localChunkIndices);
       const candidateChunks = candidateIndices.map(i => availableChunks.find(c => c.index === i)).filter(Boolean) as any[];
 
       let matchedUri = null;
 
-      // 策略 1: 網址完全命中候選清單
-      const exactUrlMatch = candidateChunks.find(c => c.uri === cleanUrl);
-      if (exactUrlMatch) matchedUri = exactUrlMatch.uri;
+      // 策略 1: 網址完全命中全局清單 (AI 寫對了真實網址)
+      const exactUrlMatchGlobal = availableChunks.find(c => normalizeUrl(c.uri) === cleanUrlNorm);
+      if (exactUrlMatchGlobal) {
+        matchedUri = exactUrlMatchGlobal.uri;
+      }
 
-      // 策略 2: 透過媒體別名對應網域
-      if (!matchedUri) {
-        for (const [key, domain] of Object.entries(aliases)) {
-          if (pubLower.includes(key)) {
-            const domainMatch = candidateChunks.find(c => c.domain.includes(domain));
-            if (domainMatch) {
-              matchedUri = domainMatch.uri;
-              break;
+      // 策略 2: 從 Local Chunks 中尋找 (基於 Grounding 的真實來源)
+      if (!matchedUri && candidateChunks.length > 0) {
+        // 2a. 只有一個候選者，直接使用 (最準確的 Grounding，無視 AI 捏造的網域)
+        if (candidateChunks.length === 1) {
+          matchedUri = candidateChunks[0].uri;
+        } 
+        // 2b. 有多個候選者，透過媒體別名或標題消歧義
+        else {
+          for (const [key, domain] of Object.entries(aliases)) {
+            if (pubLower.includes(key)) {
+              let domainMatch = candidateChunks.find(c => c.domain.includes(domain) && !usedUris.has(c.uri));
+              if (!domainMatch) domainMatch = candidateChunks.find(c => c.domain.includes(domain));
+              if (domainMatch) {
+                matchedUri = domainMatch.uri;
+                break;
+              }
             }
+          }
+          if (!matchedUri && publisherName.length > 1) {
+            let titleMatch = candidateChunks.find(c => c.title.includes(publisherName) && !usedUris.has(c.uri));
+            if (!titleMatch) titleMatch = candidateChunks.find(c => c.title.includes(publisherName));
+            if (titleMatch) matchedUri = titleMatch.uri;
+          }
+          if (!matchedUri && aiDomain) {
+            let domainMatch = candidateChunks.find(c => (c.domain.includes(aiDomain) || aiDomain.includes(c.domain)) && !usedUris.has(c.uri));
+            if (!domainMatch) domainMatch = candidateChunks.find(c => c.domain.includes(aiDomain) || aiDomain.includes(c.domain));
+            if (domainMatch) matchedUri = domainMatch.uri;
+          }
+          // 如果都無法消歧義，優先使用未被使用過的 chunk
+          if (!matchedUri) {
+            let unusedChunk = candidateChunks.find(c => !usedUris.has(c.uri));
+            matchedUri = unusedChunk ? unusedChunk.uri : candidateChunks[0].uri;
           }
         }
       }
 
-      // 策略 3: 媒體名稱直接出現在 Chunk 標題中
-      if (!matchedUri && publisherName.length > 1) {
-        const titleMatch = candidateChunks.find(c => c.title.includes(publisherName));
-        if (titleMatch) matchedUri = titleMatch.uri;
-      }
-
-      // 策略 4: AI 提供的網域確實存在於候選清單中
-      if (!matchedUri && aiDomain) {
-        const domainMatch = candidateChunks.find(c => c.domain.includes(aiDomain) || aiDomain.includes(c.domain));
-        if (domainMatch) matchedUri = domainMatch.uri;
-      }
-
-      // 如果局部搜尋失敗，且原本有局部搜尋，則回退到全局搜尋再試一次 (處理 index 偏移問題)
-      if (!matchedUri && localChunkIndices.size > 0) {
-         const exactUrlMatchGlobal = availableChunks.find(c => c.uri === cleanUrl);
-         if (exactUrlMatchGlobal) matchedUri = exactUrlMatchGlobal.uri;
-         
-         if (!matchedUri) {
-           for (const [key, domain] of Object.entries(aliases)) {
-             if (pubLower.includes(key)) {
-               const domainMatch = availableChunks.find(c => c.domain.includes(domain));
-               if (domainMatch) {
-                 matchedUri = domainMatch.uri;
-                 break;
-               }
+      // 策略 3: 如果沒有 Local Chunks，回退到全局搜尋 (只用強匹配)
+      if (!matchedUri) {
+         for (const [key, domain] of Object.entries(aliases)) {
+           if (pubLower.includes(key)) {
+             let domainMatch = availableChunks.find(c => c.domain.includes(domain) && !usedUris.has(c.uri));
+             if (!domainMatch) domainMatch = availableChunks.find(c => c.domain.includes(domain));
+             if (domainMatch) {
+               matchedUri = domainMatch.uri;
+               break;
              }
            }
-         }
-         
-         if (!matchedUri && publisherName.length > 1) {
-            const titleMatch = availableChunks.find(c => c.title.includes(publisherName));
-            if (titleMatch) matchedUri = titleMatch.uri;
-         }
-         
-         if (!matchedUri && aiDomain) {
-            const domainMatch = availableChunks.find(c => c.domain.includes(aiDomain) || aiDomain.includes(c.domain));
-            if (domainMatch) matchedUri = domainMatch.uri;
          }
       }
 
       // 嚴格把關：如果找不到任何匹配的真實來源，絕對不產生超連結
       if (matchedUri) {
+        usedUris.add(matchedUri);
         return `${prefix}[${actualLinkText}](${matchedUri})`;
       } else {
         return `${prefix}${actualLinkText} (來源未驗證)`;
