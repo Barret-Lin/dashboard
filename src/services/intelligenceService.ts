@@ -151,14 +151,12 @@ export interface ThreatLevelData {
 
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
-function getTaipeiDateString(offsetDays = 0) {
+function getLocalDateString(offsetDays = 0) {
   const d = new Date();
-  const utc = d.getTime() + (d.getTimezoneOffset() * 60000);
-  const taipeiDate = new Date(utc + (3600000 * 8));
-  taipeiDate.setDate(taipeiDate.getDate() + offsetDays);
-  const year = taipeiDate.getFullYear();
-  const month = String(taipeiDate.getMonth() + 1).padStart(2, '0');
-  const day = String(taipeiDate.getDate()).padStart(2, '0');
+  d.setDate(d.getDate() + offsetDays);
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
 }
 
@@ -220,21 +218,19 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
     }
   }
 
-  const now = new Date().toLocaleString('zh-TW', { timeZone: 'Asia/Taipei', hour12: false });
-  const todayStr = getTaipeiDateString(0);
-  const yesterdayStr = getTaipeiDateString(-1);
-  const tomorrowStr = getTaipeiDateString(1);
+  const now = new Date().toLocaleString('zh-TW', { hour12: false });
+  const todayStr = getLocalDateString(0);
+  const yesterdayStr = getLocalDateString(-1);
+  const tomorrowStr = getLocalDateString(1);
   
   const d = new Date();
-  const utc = d.getTime() + (d.getTimezoneOffset() * 60000);
-  const taipeiDate = new Date(utc + (3600000 * 8));
-  const currentYear = taipeiDate.getFullYear();
-  const currentMonth = taipeiDate.getMonth() + 1;
+  const currentYear = d.getFullYear();
+  const currentMonth = d.getMonth() + 1;
 
   let prompt = '';
   if (categoryId === 'new_threat') {
-    prompt = `現在精確時間是台灣時間 ${now} (YYYY-MM-DD: ${todayStr})。
-請扮演頂尖的開源情報（OSINT）分析師。你的任務是彙整「當日（台灣時間 ${todayStr} 00:00 至 23:59）」關於中國對台灣的最新動態與新聞。
+    prompt = `現在精確時間是當地時間 ${now} (YYYY-MM-DD: ${todayStr})。
+請扮演頂尖的開源情報（OSINT）分析師。你的任務是彙整「當日（當地時間 ${todayStr} 00:00 至 23:59）」關於中國對台灣的最新動態與新聞。
 【注意】：已取消「過去24小時」的定義，請嚴格只抓取「當日」的資料。
 
 【深度檢索與引用規範】執行時請遵守以下步驟：
@@ -258,8 +254,8 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
 
 請確保資訊是最新的，並基於真實的新聞報導與社群動態。`;
   } else {
-    prompt = `現在精確時間是台灣時間 ${now} (YYYY-MM-DD: ${todayStr})。
-請扮演頂尖的開源情報（OSINT）分析師。你的任務是彙整「當日（台灣時間 ${todayStr} 00:00 至 23:59）」關於中國對台灣的「${categoryQuery}」最新動態與新聞。
+    prompt = `現在精確時間是當地時間 ${now} (YYYY-MM-DD: ${todayStr})。
+請扮演頂尖的開源情報（OSINT）分析師。你的任務是彙整「當日（當地時間 ${todayStr} 00:00 至 23:59）」關於中國對台灣的「${categoryQuery}」最新動態與新聞。
 
 【深度檢索與引用規範】執行時請遵守以下步驟：
 1. 搜尋來源：僅限使用官方網站、學術論文或知名新聞媒體的資料。
@@ -335,7 +331,7 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
 
     let processedText = text;
     
-    // 5. 落實防偽超連結驗證機制 (嚴格上下文比對版)
+    // 5. 落實防偽超連結驗證機制 (極致嚴格：基於最近鄰 Grounding Support)
     const markdownLinkRegex = /\[([^\]]+)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g;
     
     processedText = processedText.replace(markdownLinkRegex, (match, linkText, url, offset) => {
@@ -343,23 +339,50 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
       let aiDomain = '';
       try { aiDomain = new URL(cleanUrl).hostname.replace(/^www\./, ''); } catch(e) {}
 
-      // 1. 取得上下文關聯的真實網址 (檢查連結前方 150 個字元內的 Grounding Supports，這通常涵蓋了引用的文字)
+      const publisherMatch = linkText.match(/\d{4}-\d{2}-\d{2}\s+(.+)/);
+      const publisherName = publisherMatch ? publisherMatch[1].trim() : linkText;
+
+      // 1. 尋找與此引言最相關的 Grounding Support
+      // 搜尋範圍：連結前方 150 字元 (涵蓋引言) 到連結結束
       const searchStart = Math.max(0, offset - 150);
-      const searchEnd = offset;
+      const searchEnd = offset + match.length;
       
-      const contextualUris = new Set<string>();
+      let closestSupport: any = null;
+      let minDistance = Infinity;
+
       groundingSupports.forEach((support: any) => {
         const sStart = support.segment?.startIndex || 0;
         const sEnd = support.segment?.endIndex || 0;
+        
+        // 檢查此 support 是否落在我們的搜尋視窗內
         if (sStart <= searchEnd && sEnd >= searchStart) {
-          const indices = support.groundingChunkIndices || [];
-          indices.forEach((i: number) => {
-            const uri = groundingChunks[i]?.web?.uri;
-            if (uri) contextualUris.add(uri);
-          });
+          // 計算 support 結尾與連結起點的距離 (越近代表越有可能是該引言的來源)
+          const distance = Math.abs(offset - sEnd);
+          if (distance < minDistance) {
+            minDistance = distance;
+            closestSupport = support;
+          }
         }
       });
 
+      if (!closestSupport) {
+        // 如果在這段文字附近完全找不到 Google Search 的底層支持來源，直接捨棄
+        return `${linkText}【資料不足，無法確認】`;
+      }
+
+      const indices = closestSupport.groundingChunkIndices || [];
+      const candidateUris = indices.map((i: number) => groundingChunks[i]?.web?.uri).filter(Boolean);
+
+      if (candidateUris.length === 0) {
+        return `${linkText}【資料不足，無法確認】`;
+      }
+
+      // 如果只有一個候選網址，這就是 100% 精確的來源
+      if (candidateUris.length === 1) {
+        return `[${linkText}](${candidateUris[0]})`;
+      }
+
+      // 如果有多個候選網址 (這段文字綜合了多個來源)，我們需要進行消歧義
       const normalizeUrl = (u: string) => {
         try {
           const parsed = new URL(u);
@@ -369,61 +392,29 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
         }
       };
 
-      // 2. 檢查 AI 提供的網址是否「完全精確」存在於真實搜尋結果中
-      const exactMatchUri = groundingChunks.map((c:any) => c.web?.uri).find((u:string) => u && normalizeUrl(u) === normalizeUrl(cleanUrl));
-      
-      if (exactMatchUri) {
-          // 如果完全吻合，且在上下文中也有被支持，這是最完美的狀態
-          if (contextualUris.has(exactMatchUri)) {
-              return `[${linkText}](${exactMatchUri})`;
-          }
-      }
+      // 消歧義 1: AI 提供的網址剛好完全命中其中一個候選網址
+      const exactMatch = candidateUris.find((u: string) => normalizeUrl(u) === normalizeUrl(cleanUrl));
+      if (exactMatch) return `[${linkText}](${exactMatch})`;
 
-      // 3. 網域比對：AI 常會捏造路徑但網域是對的。檢查上下文來源中是否有同網域的真實網址
+      // 消歧義 2: AI 提供的網域命中其中一個候選網址
       if (aiDomain) {
-          const domainMatchUri = Array.from(contextualUris).find(u => {
-              try { return new URL(u).hostname.includes(aiDomain); } catch(e) { return false; }
-          });
-          if (domainMatchUri) {
-              return `[${linkText}](${domainMatchUri})`;
-          }
+        const domainMatch = candidateUris.find((u: string) => {
+          try { return new URL(u).hostname.includes(aiDomain); } catch(e) { return false; }
+        });
+        if (domainMatch) return `[${linkText}](${domainMatch})`;
       }
 
-      // 4. 媒體名稱比對：從 linkText 萃取媒體名稱 (例如 "2026-03-14 中央社" -> "中央社")
-      const publisherMatch = linkText.match(/\d{4}-\d{2}-\d{2}\s+(.+)/);
-      const publisherName = publisherMatch ? publisherMatch[1].trim() : linkText;
-      
+      // 消歧義 3: 媒體名稱命中其中一個候選網址的標題
       if (publisherName.length > 1) {
-          // 在上下文來源中尋找標題包含該媒體名稱的真實網址
-          const titleMatchUri = Array.from(contextualUris).find(u => {
-              const source = uniqueAllSources.find(s => s.uri === u);
-              return source && source.title.includes(publisherName);
-          });
-          if (titleMatchUri) {
-              return `[${linkText}](${titleMatchUri})`;
-          }
+        const titleMatch = candidateUris.find((u: string) => {
+          const source = uniqueAllSources.find(s => s.uri === u);
+          return source && source.title.includes(publisherName);
+        });
+        if (titleMatch) return `[${linkText}](${titleMatch})`;
       }
 
-      // 5. 降級信任：如果 AI 提供的網址是真實存在的 (exactMatchUri)，即使不在緊鄰的上下文中，我們仍可信任它
-      if (exactMatchUri) {
-          return `[${linkText}](${exactMatchUri})`;
-      }
-
-      // 6. 唯一來源推論：如果這段引言的上下文中「只有一個」真實來源支撐，那極大機率就是它
-      if (contextualUris.size === 1) {
-          return `[${linkText}](${Array.from(contextualUris)[0]})`;
-      }
-
-      // 7. 全局唯一媒體推論：如果今天該媒體在所有搜尋結果中只有一篇報導，那必定是那一篇
-      if (publisherName.length > 1) {
-          const allPublisherUris = uniqueAllSources.filter(s => s.title.includes(publisherName)).map(s => s.uri);
-          if (allPublisherUris.length === 1) {
-              return `[${linkText}](${allPublisherUris[0]})`;
-          }
-      }
-
-      // 8. 驗證失敗：捨棄超連結，轉為純文字
-      return `${linkText}【資料不足，無法確認】`;
+      // 消歧義失敗：預設使用最相關支持來源的第一個網址
+      return `[${linkText}](${candidateUris[0]})`;
     });
 
     const result = {
@@ -475,18 +466,16 @@ export async function fetchOverallThreatLevel(customApiKey?: string, forceRefres
     }
   }
 
-  const now = new Date().toLocaleString('zh-TW', { timeZone: 'Asia/Taipei', hour12: false });
-  const todayStr = getTaipeiDateString(0);
-  const yesterdayStr = getTaipeiDateString(-1);
-  const tomorrowStr = getTaipeiDateString(1);
+  const now = new Date().toLocaleString('zh-TW', { hour12: false });
+  const todayStr = getLocalDateString(0);
+  const yesterdayStr = getLocalDateString(-1);
+  const tomorrowStr = getLocalDateString(1);
   
   const d = new Date();
-  const utc = d.getTime() + (d.getTimezoneOffset() * 60000);
-  const taipeiDate = new Date(utc + (3600000 * 8));
-  const currentYear = taipeiDate.getFullYear();
-  const currentMonth = taipeiDate.getMonth() + 1;
+  const currentYear = d.getFullYear();
+  const currentMonth = d.getMonth() + 1;
 
-  const prompt = `現在精確時間是台灣時間 ${now} (YYYY-MM-DD: ${todayStr})。
+  const prompt = `現在精確時間是當地時間 ${now} (YYYY-MM-DD: ${todayStr})。
 請嚴格搜尋「當日（台灣時間 ${todayStr} 00:00 至 23:59）」關於台海局勢的新聞（包含國內外媒體及社群網路），評估目前的整體威脅等級。
 
 【🔴 絕對強制指令 - 違反將導致系統錯誤 🔴】：
@@ -648,12 +637,16 @@ export async function fetchTimelineEvents(customApiKey?: string, forceRefresh = 
     }
   }
 
-  const now = new Date().toLocaleString('zh-TW', { timeZone: 'Asia/Taipei', hour12: false });
-  const todayStr = getTaipeiDateString(0);
-  const lastWeekStr = getTaipeiDateString(-7);
+  const now = new Date().toLocaleString('zh-TW', { hour12: false });
+  const todayStr = getLocalDateString(0);
+  
+  // 過去一週：自網頁載入時間起算或手動更新頁面開始起算七日
+  const lastWeekDate = new Date();
+  lastWeekDate.setDate(lastWeekDate.getDate() - 7);
+  const lastWeekStr = lastWeekDate.toLocaleString('zh-TW', { hour12: false });
 
-  const prompt = `現在精確時間是台灣時間 ${now} (YYYY-MM-DD: ${todayStr})。
-請扮演頂尖的開源情報（OSINT）分析師。你的任務是搜尋「過去一週（台灣時間 ${lastWeekStr} 至 ${todayStr}）」關於台海局勢的重大新聞與事件。
+  const prompt = `現在精確時間是當地時間 ${now} (YYYY-MM-DD: ${todayStr})。
+請扮演頂尖的開源情報（OSINT）分析師。你的任務是搜尋「過去一週（當地時間 ${lastWeekStr} 至 ${now}）」關於台海局勢的重大新聞與事件。
 
 【🔴 絕對強制指令 🔴】：
 1. 搜尋策略：你呼叫 Google Search 工具時，必須搜尋過去一週內關於台海軍事、經濟、外交、認知作戰的真實重大事件。
@@ -722,13 +715,13 @@ export async function fetchMapData(customApiKey?: string, forceRefresh = false, 
     }
   }
 
-  const now = new Date().toLocaleString('zh-TW', { timeZone: 'Asia/Taipei', hour12: false });
-  const todayStr = getTaipeiDateString(0);
-  const yesterdayStr = getTaipeiDateString(-1);
-  const tomorrowStr = getTaipeiDateString(1);
+  const now = new Date().toLocaleString('zh-TW', { hour12: false });
+  const todayStr = getLocalDateString(0);
+  const yesterdayStr = getLocalDateString(-1);
+  const tomorrowStr = getLocalDateString(1);
 
-  const prompt = `現在精確時間是台灣時間 ${now} (YYYY-MM-DD: ${todayStr})。
-請扮演頂尖的開源情報（OSINT）分析師。你的任務是搜尋「國防部 臺海周邊海、空域動態」的「當日（台灣時間 ${todayStr} 00:00 至 23:59）、即時」最新發布資料，以及中國海事局最新的「航行警告 / 禁航區 / 演習」公告。
+  const prompt = `現在精確時間是當地時間 ${now} (YYYY-MM-DD: ${todayStr})。
+請扮演頂尖的開源情報（OSINT）分析師。你的任務是搜尋「國防部 臺海周邊海、空域動態」的「當日（當地時間 ${todayStr} 00:00 至 23:59）、即時」最新發布資料，以及中國海事局最新的「航行警告 / 禁航區 / 演習」公告。
 
 【🔴 絕對強制指令 🔴】：
 1. 搜尋策略：請搜尋 "${todayStr} 國防部 臺海周邊海 空域動態"，強制獲取當日發布的資料。並強制加上 "after:${yesterdayStr} before:${tomorrowStr}" 參數，以確保搜尋引擎只回傳當日的結果。
