@@ -333,13 +333,52 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
 
     let processedText = text;
     
-    // 5. 落實防偽超連結驗證機制 (極致精確版：定向搜尋 + 媒體名稱強匹配)
+    // 5. 落實防偽超連結驗證機制 (100% 精確匹配版：嚴格語意與網域對應)
     const markdownLinkRegex = /\[([^\]]+)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g;
     
+    const availableChunks = groundingChunks.map((c: any, index: number) => ({
+      index,
+      uri: c.web?.uri || '',
+      title: (c.web?.title || '').toLowerCase(),
+      domain: c.web?.uri ? new URL(c.web.uri).hostname.toLowerCase().replace(/^www\./, '') : ''
+    })).filter((c: any) => c.uri);
+
+    const aliases: Record<string, string> = {
+      '中央社': 'cna.com.tw',
+      '聯合報': 'udn.com',
+      '聯合新聞網': 'udn.com',
+      '中時': 'chinatimes.com',
+      '自由時報': 'ltn.com.tw',
+      '自由': 'ltn.com.tw',
+      '新頭殼': 'newtalk.tw',
+      'newtalk': 'newtalk.tw',
+      '風傳媒': 'storm.mg',
+      '東森': 'ettoday.net',
+      'ettoday': 'ettoday.net',
+      'tvbs': 'tvbs.com.tw',
+      '三立': 'setn.com',
+      '民視': 'ftvnews.com.tw',
+      '公視': 'pts.org.tw',
+      '大紀元': 'epochtimes.com',
+      '新華社': 'xinhuanet.com',
+      '央視': 'cctv.com',
+      '環球網': 'huanqiu.com',
+      '解放軍報': '81.cn',
+      '國防部': 'mnd.gov.tw',
+      '海事局': 'msa.gov.cn',
+      '路透': 'reuters.com',
+      '彭博': 'bloomberg.com',
+      '金融時報': 'ft.com',
+      '華爾街日報': 'wsj.com',
+      '紐約時報': 'nytimes.com',
+      'bbc': 'bbc.com',
+      'cnn': 'cnn.com',
+    };
+
     processedText = processedText.replace(markdownLinkRegex, (match, linkText, url, offset) => {
       const cleanUrl = url.trim();
       let aiDomain = '';
-      try { aiDomain = new URL(cleanUrl).hostname.replace(/^www\./, ''); } catch(e) {}
+      try { aiDomain = new URL(cleanUrl).hostname.replace(/^www\./, '').toLowerCase(); } catch(e) {}
 
       let prefix = '';
       let actualLinkText = linkText;
@@ -351,80 +390,92 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
         actualLinkText = malformedMatch[2];
       }
 
+      const pubLower = actualLinkText.toLowerCase();
       const parts = actualLinkText.trim().split(/\s+/);
-      const publisherName = parts.length > 1 ? parts[parts.length - 1] : actualLinkText;
+      const publisherName = parts.length > 1 ? parts[parts.length - 1].toLowerCase() : pubLower;
 
-      // 1. 尋找支撐此連結文字的 Grounding Support
-      // 我們尋找「結束位置」最接近連結起點的 Support，且距離不能太遠 (例如 60 字元內)
-      let bestSupport: any = null;
-      let minDistance = 60; // 嚴格限制距離，防止跨主題誤配
-
+      // 1. 尋找與此引言重疊的 Grounding Support (局部搜尋)
+      const searchStart = Math.max(0, offset - 150);
+      const searchEnd = offset + match.length;
+      
+      const localChunkIndices = new Set<number>();
       groundingSupports.forEach((support: any) => {
         const sStart = support.segment?.startIndex || 0;
         const sEnd = support.segment?.endIndex || 0;
-        
-        // 情況 A: Support 結束在連結之前 (最常見)
-        if (sEnd <= offset) {
-          const dist = offset - sEnd;
-          if (dist < minDistance) {
-            minDistance = dist;
-            bestSupport = support;
-          }
-        }
-        // 情況 B: 連結被包在 Support 範圍內
-        else if (sStart <= offset && sEnd >= offset + match.length) {
-          bestSupport = support;
-          minDistance = 0;
+        if (sStart <= searchEnd && sEnd >= searchStart) {
+          const indices = support.groundingChunkIndices || [];
+          indices.forEach((i: number) => localChunkIndices.add(i));
         }
       });
 
-      if (!bestSupport) {
-        // 如果找不到鄰近的支撐來源，嘗試在全局搜尋結果中找媒體匹配，否則標註不確定
-        const globalMatch = uniqueAllSources.find(s => s.title.includes(publisherName));
-        if (globalMatch) return `${prefix}[${actualLinkText}](${globalMatch.uri})`;
-        return `${prefix}${actualLinkText}【資料不足，無法確認】`;
-      }
+      const candidateIndices = localChunkIndices.size > 0 ? Array.from(localChunkIndices) : availableChunks.map(c => c.index);
+      const candidateChunks = candidateIndices.map(i => availableChunks.find(c => c.index === i)).filter(Boolean) as any[];
 
-      const indices = bestSupport.groundingChunkIndices || [];
-      const candidateChunks = indices.map((i: number) => groundingChunks[i]).filter(Boolean);
+      let matchedUri = null;
 
-      if (candidateChunks.length === 0) {
-        return `${prefix}${actualLinkText}【資料不足，無法確認】`;
-      }
+      // 策略 1: 網址完全命中候選清單
+      const exactUrlMatch = candidateChunks.find(c => c.uri === cleanUrl);
+      if (exactUrlMatch) matchedUri = exactUrlMatch.uri;
 
-      const normalizeUrl = (u: string) => {
-        try {
-          const parsed = new URL(u);
-          return parsed.origin + parsed.pathname.replace(/\/$/, '');
-        } catch {
-          return u.split('?')[0].replace(/\/$/, '');
+      // 策略 2: 透過媒體別名對應網域
+      if (!matchedUri) {
+        for (const [key, domain] of Object.entries(aliases)) {
+          if (pubLower.includes(key)) {
+            const domainMatch = candidateChunks.find(c => c.domain.includes(domain));
+            if (domainMatch) {
+              matchedUri = domainMatch.uri;
+              break;
+            }
+          }
         }
-      };
-
-      // 消歧義策略：
-      // 1. 優先匹配媒體名稱 (最準確)
-      if (publisherName.length > 1) {
-        const titleMatch = candidateChunks.find(chunk => 
-          (chunk.web?.title && chunk.web.title.includes(publisherName)) ||
-          (chunk.web?.uri && chunk.web.uri.includes(publisherName.toLowerCase()))
-        );
-        if (titleMatch?.web?.uri) return `${prefix}[${actualLinkText}](${titleMatch.web.uri})`;
       }
 
-      // 2. 匹配 AI 提供的網域
-      if (aiDomain) {
-        const domainMatch = candidateChunks.find(chunk => {
-          try { return chunk.web?.uri && new URL(chunk.web.uri).hostname.includes(aiDomain); } catch(e) { return false; }
-        });
-        if (domainMatch?.web?.uri) return `${prefix}[${actualLinkText}](${domainMatch.web.uri})`;
+      // 策略 3: 媒體名稱直接出現在 Chunk 標題中
+      if (!matchedUri && publisherName.length > 1) {
+        const titleMatch = candidateChunks.find(c => c.title.includes(publisherName));
+        if (titleMatch) matchedUri = titleMatch.uri;
       }
 
-      // 3. 如果 AI 提供的網址本身就在候選清單中
-      const exactMatch = candidateChunks.find(chunk => chunk.web?.uri && normalizeUrl(chunk.web.uri) === normalizeUrl(cleanUrl));
-      if (exactMatch?.web?.uri) return `${prefix}[${actualLinkText}](${exactMatch.web.uri})`;
+      // 策略 4: AI 提供的網域確實存在於候選清單中
+      if (!matchedUri && aiDomain) {
+        const domainMatch = candidateChunks.find(c => c.domain.includes(aiDomain) || aiDomain.includes(c.domain));
+        if (domainMatch) matchedUri = domainMatch.uri;
+      }
 
-      // 4. 最後手段：使用該 Support 的第一個候選網址
-      return `${prefix}[${actualLinkText}](${candidateChunks[0].web?.uri || cleanUrl})`;
+      // 如果局部搜尋失敗，且原本有局部搜尋，則回退到全局搜尋再試一次 (處理 index 偏移問題)
+      if (!matchedUri && localChunkIndices.size > 0) {
+         const exactUrlMatchGlobal = availableChunks.find(c => c.uri === cleanUrl);
+         if (exactUrlMatchGlobal) matchedUri = exactUrlMatchGlobal.uri;
+         
+         if (!matchedUri) {
+           for (const [key, domain] of Object.entries(aliases)) {
+             if (pubLower.includes(key)) {
+               const domainMatch = availableChunks.find(c => c.domain.includes(domain));
+               if (domainMatch) {
+                 matchedUri = domainMatch.uri;
+                 break;
+               }
+             }
+           }
+         }
+         
+         if (!matchedUri && publisherName.length > 1) {
+            const titleMatch = availableChunks.find(c => c.title.includes(publisherName));
+            if (titleMatch) matchedUri = titleMatch.uri;
+         }
+         
+         if (!matchedUri && aiDomain) {
+            const domainMatch = availableChunks.find(c => c.domain.includes(aiDomain) || aiDomain.includes(c.domain));
+            if (domainMatch) matchedUri = domainMatch.uri;
+         }
+      }
+
+      // 嚴格把關：如果找不到任何匹配的真實來源，絕對不產生超連結
+      if (matchedUri) {
+        return `${prefix}[${actualLinkText}](${matchedUri})`;
+      } else {
+        return `${prefix}${actualLinkText} (來源未驗證)`;
+      }
     });
 
     const result = {
