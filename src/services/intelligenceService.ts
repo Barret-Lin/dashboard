@@ -659,7 +659,7 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
         usedUris.add(matchedUri);
         return `${prefix}[${actualLinkText}](${matchedUri})`;
       } else {
-        return `${prefix}${actualLinkText} (來源未驗證)`;
+        return `${prefix}${actualLinkText}`;
       }
     });
 
