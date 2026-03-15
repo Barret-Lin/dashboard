@@ -199,6 +199,219 @@ export function clearDataCache() {
   }
 }
 
+export function processMarkdownLinks(
+  text: string, 
+  groundingMetadata: any, 
+  usedUris: Set<string> = new Set(), 
+  verifiedSources: { title: string; uri: string }[] = []
+) {
+  if (!text || !groundingMetadata) return { text, sources: verifiedSources, usedUris };
+
+  const groundingChunks = groundingMetadata.groundingChunks || [];
+  const groundingSupports = groundingMetadata.groundingSupports || [];
+
+  const availableChunks = groundingChunks.map((c: any, index: number) => ({
+    index,
+    uri: c.web?.uri || '',
+    title: (c.web?.title || '').toLowerCase(),
+    domain: c.web?.uri ? new URL(c.web.uri).hostname.toLowerCase().replace(/^www\./, '') : ''
+  })).filter((c: any) => c.uri);
+
+  const aliases: Record<string, string> = {
+    '中央社': 'cna.com.tw',
+    '聯合報': 'udn.com',
+    '聯合新聞網': 'udn.com',
+    '中時': 'chinatimes.com',
+    '中國時報': 'chinatimes.com',
+    '自由時報': 'ltn.com.tw',
+    '自由': 'ltn.com.tw',
+    '新頭殼': 'newtalk.tw',
+    'newtalk': 'newtalk.tw',
+    '風傳媒': 'storm.mg',
+    '東森': 'ettoday.net',
+    'ettoday': 'ettoday.net',
+    'tvbs': 'tvbs.com.tw',
+    '三立': 'setn.com',
+    '民視': 'ftvnews.com.tw',
+    '公視': 'pts.org.tw',
+    '大紀元': 'epochtimes.com',
+    '新華社': 'xinhuanet.com',
+    '央視': 'cctv.com',
+    '環球網': 'huanqiu.com',
+    '解放軍報': '81.cn',
+    '國防部': 'mnd.gov.tw',
+    '海事局': 'msa.gov.cn',
+    '外交部': 'mfa.gov.cn',
+    '人民網': 'people.com.cn',
+    '新浪': 'sina.com.cn',
+    '騰訊': 'qq.com',
+    '網易': '163.com',
+    '搜狐': 'sohu.com',
+    '鳳凰網': 'ifeng.com',
+    '觀察者網': 'guancha.cn',
+    '中評社': 'crntt.com',
+    '海峽時報': 'straitstimes.com',
+    '路透': 'reuters.com',
+    '彭博': 'bloomberg.com',
+    '金融時報': 'ft.com',
+    '華爾街日報': 'wsj.com',
+    '紐約時報': 'nytimes.com',
+    'bbc': 'bbc.com',
+    'cnn': 'cnn.com',
+    'washington post': 'washingtonpost.com',
+    '華盛頓郵報': 'washingtonpost.com',
+    'dw': 'dw.com',
+    '德國之聲': 'dw.com',
+    '法新社': 'afp.com',
+    '美聯社': 'apnews.com',
+    '共同社': 'kyodonews.net',
+    '日經': 'nikkei.com',
+    '讀賣': 'yomiuri.co.jp',
+    '朝日': 'asahi.com',
+    '產經': 'sankei.com',
+    '南華早報': 'scmp.com',
+    '星島': 'stheadline.com',
+    '明報': 'mingpao.com',
+    '太報': 'taisounds.com',
+    '上報': 'upmedia.mg',
+    '信傳媒': 'cmmedia.com.tw',
+    '鏡週刊': 'mirrormedia.mg',
+    '天下': 'cw.com.tw',
+    '今周刊': 'businesstoday.com.tw',
+    '商業周刊': 'businessweekly.com.tw',
+    '遠見': 'gvm.com.tw',
+    '中央廣播電臺': 'rti.org.tw',
+    '央廣': 'rti.org.tw',
+    '美國之音': 'voachinese.com',
+    'voa': 'voanews.com',
+    '自由亞洲': 'rfa.org',
+    'rfa': 'rfa.org',
+    '法廣': 'rfi.fr',
+    'rfi': 'rfi.fr',
+    '端傳媒': 'theinitium.com',
+    '報導者': 'twreporter.org',
+    '關鍵評論網': 'thenewslens.com',
+    'yahoo': 'yahoo.com',
+    'line': 'today.line.me',
+    'msn': 'msn.com',
+    'google': 'news.google.com',
+  };
+
+  const normalizeUrl = (u: string) => {
+    try {
+      const parsed = new URL(u);
+      return parsed.origin + parsed.pathname.replace(/\/$/, '');
+    } catch {
+      return u.split('?')[0].replace(/\/$/, '');
+    }
+  };
+
+  const markdownLinkRegex = /\[([^\]]+)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g;
+
+  const processedText = text.replace(markdownLinkRegex, (match, linkText, url, offset) => {
+    const cleanUrl = url.trim();
+    const cleanUrlNorm = normalizeUrl(cleanUrl);
+    let aiDomain = '';
+    try { aiDomain = new URL(cleanUrl).hostname.replace(/^www\./, '').toLowerCase(); } catch(e) {}
+
+    let prefix = '';
+    let actualLinkText = linkText;
+    
+    const malformedMatch = linkText.match(/^(.*?[」】"']\s*)(.+)$/);
+    if (malformedMatch) {
+      prefix = malformedMatch[1];
+      actualLinkText = malformedMatch[2];
+    }
+
+    const pubLower = actualLinkText.toLowerCase();
+    const parts = actualLinkText.trim().split(/\s+/);
+    const publisherName = parts.length > 1 ? parts[parts.length - 1].toLowerCase() : pubLower;
+
+    const localChunkIndices = new Set<number>();
+    groundingSupports.forEach((support: any) => {
+      const sStart = support.segment?.startIndex || 0;
+      const sEnd = support.segment?.endIndex || 0;
+      if ((sStart <= offset && sEnd >= offset) || (sEnd <= offset && offset - sEnd <= 50)) {
+        const indices = support.groundingChunkIndices || [];
+        indices.forEach((i: number) => localChunkIndices.add(i));
+      }
+    });
+
+    if (localChunkIndices.size === 0) {
+      groundingSupports.forEach((support: any) => {
+        const sStart = support.segment?.startIndex || 0;
+        const sEnd = support.segment?.endIndex || 0;
+        if (sEnd <= offset && offset - sEnd <= 150) {
+          const indices = support.groundingChunkIndices || [];
+          indices.forEach((i: number) => localChunkIndices.add(i));
+        }
+      });
+    }
+
+    const candidateIndices = Array.from(localChunkIndices);
+    const candidateChunks = candidateIndices.map(i => availableChunks.find(c => c.index === i)).filter(Boolean) as any[];
+
+    let matchedChunk = null;
+    let expectedDomains: string[] = [];
+    for (const [key, domain] of Object.entries(aliases)) {
+      if (pubLower.includes(key)) {
+        expectedDomains.push(domain);
+      }
+    }
+
+    // 1. 網址完全命中全局清單 (AI 寫對了真實網址)
+    const exactUrlMatchGlobal = availableChunks.find(c => normalizeUrl(c.uri) === cleanUrlNorm);
+    if (exactUrlMatchGlobal) {
+      if (expectedDomains.length > 0) {
+        if (expectedDomains.some(d => exactUrlMatchGlobal.domain.includes(d))) {
+          matchedChunk = exactUrlMatchGlobal;
+        }
+      } else {
+        matchedChunk = exactUrlMatchGlobal;
+      }
+    }
+
+    // 2. 從 Local Chunks 或 Global Chunks 中尋找
+    if (!matchedChunk) {
+      if (expectedDomains.length > 0) {
+        // STRICT MODE: 必須符合 expectedDomains
+        matchedChunk = candidateChunks.find(c => expectedDomains.some(d => c.domain.includes(d)) && !usedUris.has(c.uri))
+                    || candidateChunks.find(c => expectedDomains.some(d => c.domain.includes(d)))
+                    || availableChunks.find(c => expectedDomains.some(d => c.domain.includes(d)) && !usedUris.has(c.uri))
+                    || availableChunks.find(c => expectedDomains.some(d => c.domain.includes(d)));
+      } else {
+        // NON-STRICT MODE: 透過標題比對
+        if (publisherName.length > 1) {
+          matchedChunk = candidateChunks.find(c => c.title.includes(publisherName) && !usedUris.has(c.uri))
+                      || candidateChunks.find(c => c.title.includes(publisherName))
+                      || availableChunks.find(c => c.title.includes(publisherName) && !usedUris.has(c.uri))
+                      || availableChunks.find(c => c.title.includes(publisherName));
+        }
+        // 只有在沒有預期網域且標題比對失敗時，才謹慎使用 AI 提供的網域
+        if (!matchedChunk && aiDomain) {
+          matchedChunk = candidateChunks.find(c => c.domain.includes(aiDomain) && !usedUris.has(c.uri))
+                      || candidateChunks.find(c => c.domain.includes(aiDomain))
+                      || availableChunks.find(c => c.domain.includes(aiDomain) && !usedUris.has(c.uri))
+                      || availableChunks.find(c => c.domain.includes(aiDomain));
+        }
+      }
+    }
+
+    if (matchedChunk) {
+      const matchedUri = matchedChunk.uri;
+      usedUris.add(matchedUri);
+      if (!verifiedSources.find(s => s.uri === matchedUri)) {
+        verifiedSources.push({ title: matchedChunk.title, uri: matchedUri });
+      }
+      return `${prefix}[${actualLinkText}](${matchedUri})`;
+    } else {
+      return `${prefix}${actualLinkText} (來源未驗證)`;
+    }
+  });
+
+  return { text: processedText, sources: verifiedSources, usedUris };
+}
+
 export async function fetchIntelligence(categoryId: string, categoryQuery: string, customApiKey?: string, forceRefresh = false, isPaidKey = false): Promise<IntelligenceData> {
   const cleanApiKey = customApiKey?.trim().replace(/[\s\uFEFF\xA0]/g, '').replace(/[^a-zA-Z0-9_-]/g, '');
   if (!cleanApiKey) {
@@ -335,199 +548,11 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
     let processedText = text;
     
     // 5. 落實防偽超連結驗證機制 (100% 精確匹配版：嚴格語意與網域對應)
-    const markdownLinkRegex = /\[([^\]]+)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g;
-    
-    const availableChunks = groundingChunks.map((c: any, index: number) => ({
-      index,
-      uri: c.web?.uri || '',
-      title: (c.web?.title || '').toLowerCase(),
-      domain: c.web?.uri ? new URL(c.web.uri).hostname.toLowerCase().replace(/^www\./, '') : ''
-    })).filter((c: any) => c.uri);
-
-    const aliases: Record<string, string> = {
-      '中央社': 'cna.com.tw',
-      '聯合報': 'udn.com',
-      '聯合新聞網': 'udn.com',
-      '中時': 'chinatimes.com',
-      '中國時報': 'chinatimes.com',
-      '自由時報': 'ltn.com.tw',
-      '自由': 'ltn.com.tw',
-      '新頭殼': 'newtalk.tw',
-      'newtalk': 'newtalk.tw',
-      '風傳媒': 'storm.mg',
-      '東森': 'ettoday.net',
-      'ettoday': 'ettoday.net',
-      'tvbs': 'tvbs.com.tw',
-      '三立': 'setn.com',
-      '民視': 'ftvnews.com.tw',
-      '公視': 'pts.org.tw',
-      '大紀元': 'epochtimes.com',
-      '新華社': 'xinhuanet.com',
-      '央視': 'cctv.com',
-      '環球網': 'huanqiu.com',
-      '解放軍報': '81.cn',
-      '國防部': 'mnd.gov.tw',
-      '海事局': 'msa.gov.cn',
-      '外交部': 'mfa.gov.cn',
-      '路透': 'reuters.com',
-      '彭博': 'bloomberg.com',
-      '金融時報': 'ft.com',
-      '華爾街日報': 'wsj.com',
-      '紐約時報': 'nytimes.com',
-      'bbc': 'bbc.com',
-      'cnn': 'cnn.com',
-      'washington post': 'washingtonpost.com',
-      '華盛頓郵報': 'washingtonpost.com',
-      'dw': 'dw.com',
-      '德國之聲': 'dw.com',
-      '法新社': 'afp.com',
-      '美聯社': 'apnews.com',
-      '共同社': 'kyodonews.net',
-      '日經': 'nikkei.com',
-      '讀賣': 'yomiuri.co.jp',
-      '朝日': 'asahi.com',
-      '產經': 'sankei.com',
-      '南華早報': 'scmp.com',
-      '星島': 'stheadline.com',
-      '明報': 'mingpao.com',
-      '太報': 'taisounds.com',
-      '上報': 'upmedia.mg',
-      '信傳媒': 'cmmedia.com.tw',
-      '鏡週刊': 'mirrormedia.mg',
-      '天下': 'cw.com.tw',
-      '今周刊': 'businesstoday.com.tw',
-      '商業周刊': 'businessweekly.com.tw',
-      '遠見': 'gvm.com.tw',
-      '中央廣播電臺': 'rti.org.tw',
-      '央廣': 'rti.org.tw',
-      '美國之音': 'voachinese.com',
-      'voa': 'voanews.com',
-      '自由亞洲': 'rfa.org',
-      'rfa': 'rfa.org',
-      '法廣': 'rfi.fr',
-      'rfi': 'rfi.fr',
-      '端傳媒': 'theinitium.com',
-      '報導者': 'twreporter.org',
-      '關鍵評論網': 'thenewslens.com',
-      'yahoo': 'yahoo.com',
-      'line': 'today.line.me',
-      'msn': 'msn.com',
-      'google': 'news.google.com',
-    };
-
-    const usedUris = new Set<string>();
-
-    const normalizeUrl = (u: string) => {
-      try {
-        const parsed = new URL(u);
-        return parsed.origin + parsed.pathname.replace(/\/$/, '');
-      } catch {
-        return u.split('?')[0].replace(/\/$/, '');
-      }
-    };
-
-    processedText = processedText.replace(markdownLinkRegex, (match, linkText, url, offset) => {
-      const cleanUrl = url.trim();
-      const cleanUrlNorm = normalizeUrl(cleanUrl);
-      let aiDomain = '';
-      try { aiDomain = new URL(cleanUrl).hostname.replace(/^www\./, '').toLowerCase(); } catch(e) {}
-
-      let prefix = '';
-      let actualLinkText = linkText;
-      
-      // 修正 AI 將引號或部分引言包進超連結的錯誤格式
-      const malformedMatch = linkText.match(/^(.*?[」】"']\s*)(.+)$/);
-      if (malformedMatch) {
-        prefix = malformedMatch[1];
-        actualLinkText = malformedMatch[2];
-      }
-
-      const pubLower = actualLinkText.toLowerCase();
-      const parts = actualLinkText.trim().split(/\s+/);
-      const publisherName = parts.length > 1 ? parts[parts.length - 1].toLowerCase() : pubLower;
-
-      // 1. 尋找與此引言相關的 Grounding Support (局部搜尋)
-      const localChunkIndices = new Set<number>();
-      
-      // 優先尋找直接覆蓋超連結，或在超連結前方 50 字元內結束的 support
-      groundingSupports.forEach((support: any) => {
-        const sStart = support.segment?.startIndex || 0;
-        const sEnd = support.segment?.endIndex || 0;
-        if ((sStart <= offset && sEnd >= offset) || (sEnd <= offset && offset - sEnd <= 50)) {
-          const indices = support.groundingChunkIndices || [];
-          indices.forEach((i: number) => localChunkIndices.add(i));
-        }
-      });
-
-      // 如果找不到，放寬到前方 150 字元
-      if (localChunkIndices.size === 0) {
-        groundingSupports.forEach((support: any) => {
-          const sStart = support.segment?.startIndex || 0;
-          const sEnd = support.segment?.endIndex || 0;
-          if (sEnd <= offset && offset - sEnd <= 150) {
-            const indices = support.groundingChunkIndices || [];
-            indices.forEach((i: number) => localChunkIndices.add(i));
-          }
-        });
-      }
-
-      const candidateIndices = Array.from(localChunkIndices);
-      const candidateChunks = candidateIndices.map(i => availableChunks.find(c => c.index === i)).filter(Boolean) as any[];
-
-      let matchedUri = null;
-      let matchedChunk = null;
-
-      // 策略 1: 網址完全命中全局清單 (AI 寫對了真實網址)
-      matchedChunk = availableChunks.find(c => normalizeUrl(c.uri) === cleanUrlNorm);
-
-      // 策略 2: 從 Local Chunks 中尋找 (基於 Grounding 的真實來源)
-      if (!matchedChunk && candidateChunks.length > 0) {
-        // 透過媒體別名對應網域
-        for (const [key, domain] of Object.entries(aliases)) {
-          if (pubLower.includes(key)) {
-            matchedChunk = candidateChunks.find(c => c.domain.includes(domain) && !usedUris.has(c.uri)) || candidateChunks.find(c => c.domain.includes(domain));
-            if (matchedChunk) break;
-          }
-        }
-        // 透過媒體名稱直接出現在 Chunk 標題中
-        if (!matchedChunk && publisherName.length > 1) {
-          matchedChunk = candidateChunks.find(c => c.title.includes(publisherName) && !usedUris.has(c.uri)) || candidateChunks.find(c => c.title.includes(publisherName));
-        }
-        // 透過 AI 提供的網域確實存在於候選清單中
-        if (!matchedChunk && aiDomain) {
-          matchedChunk = candidateChunks.find(c => (c.domain.includes(aiDomain) || aiDomain.includes(c.domain)) && !usedUris.has(c.uri)) || candidateChunks.find(c => c.domain.includes(aiDomain) || aiDomain.includes(c.domain));
-        }
-      }
-
-      // 策略 3: 如果沒有 Local Chunks，回退到全局搜尋 (只用強匹配)
-      if (!matchedChunk) {
-         for (const [key, domain] of Object.entries(aliases)) {
-           if (pubLower.includes(key)) {
-             matchedChunk = availableChunks.find(c => c.domain.includes(domain) && !usedUris.has(c.uri)) || availableChunks.find(c => c.domain.includes(domain));
-             if (matchedChunk) break;
-           }
-         }
-         if (!matchedChunk && publisherName.length > 1) {
-           matchedChunk = availableChunks.find(c => c.title.includes(publisherName) && !usedUris.has(c.uri)) || availableChunks.find(c => c.title.includes(publisherName));
-         }
-         if (!matchedChunk && aiDomain) {
-           matchedChunk = availableChunks.find(c => (c.domain.includes(aiDomain) || aiDomain.includes(c.domain)) && !usedUris.has(c.uri)) || availableChunks.find(c => c.domain.includes(aiDomain) || aiDomain.includes(c.domain));
-         }
-      }
-
-      // 嚴格把關：如果找不到任何匹配的真實來源，絕對不產生超連結
-      if (matchedChunk) {
-        matchedUri = matchedChunk.uri;
-        usedUris.add(matchedUri);
-        return `${prefix}[${actualLinkText}](${matchedUri})`;
-      } else {
-        return `${prefix}${actualLinkText} (來源未驗證)`;
-      }
-    });
+    const { text: finalProcessedText, sources: verifiedSources } = processMarkdownLinks(text, response.candidates[0].groundingMetadata);
 
     const result = {
-      text: processedText,
-      sources: uniqueSources,
+      text: finalProcessedText,
+      sources: verifiedSources.length > 0 ? verifiedSources : uniqueSources,
       timestamp: Date.now(),
     };
     setLocalCache(cacheKey, result);
@@ -761,14 +786,15 @@ export async function fetchTimelineEvents(customApiKey?: string, forceRefresh = 
 2. 請嚴格回傳 JSON 格式，不要包含 Markdown 語法或額外文字。
 3. 請確保事件按時間先後順序排列（最舊的在前面，最新的在後面）。
 4. 每個事件必須評估其影響力等級 (impactLevel)，範圍為 1 到 10 的整數（10 為最高威脅/影響）。
-5. 取消超連結，保留純文字描述即可。
+5. 來源連結強制要求：請在 description 欄位中，針對關鍵論點加上超連結。格式：...「引用不超過10字」 [2026-03-14 中央社](https://www.cna.com.tw/...)。
+6. 唯一性要求：每一條引用必須對應其「專屬」的原始網頁連結。嚴禁多個不同來源指向同一個網址。
 
 JSON 格式範例：
 [
   {
     "date": "2026-03-08",
     "title": "國防部偵獲多架次共機越過海峽中線",
-    "description": "國防部今日表示，自上午起陸續偵獲多架次共機出海活動，其中部分逾越海峽中線及其延伸線...",
+    "description": "國防部今日表示，自上午起陸續偵獲多架次共機出海活動，其中部分逾越海峽中線及其延伸線... [2026-03-08 國防部](https://www.mnd.gov.tw/...)",
     "category": "military",
     "impactLevel": 8
   }
@@ -790,6 +816,9 @@ JSON 格式範例：
     const parsedData = JSON.parse(text);
     let eventsArray = Array.isArray(parsedData) ? parsedData : (parsedData.events || []);
     
+    const usedUris = new Set<string>();
+    const groundingMetadata = response.candidates?.[0]?.groundingMetadata;
+
     eventsArray = eventsArray.map((event: TimelineEvent) => {
       // Clean up markdown links in title if AI generated them
       if (event.title) {
@@ -798,6 +827,13 @@ JSON 格式範例：
           event.title = mdLinkMatch[1];
         }
       }
+      
+      // Process markdown links in description
+      if (event.description && groundingMetadata) {
+        const { text: processedDesc } = processMarkdownLinks(event.description, groundingMetadata, usedUris);
+        event.description = processedDesc;
+      }
+      
       event.url = undefined;
       return event;
     });
