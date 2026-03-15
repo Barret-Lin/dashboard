@@ -335,74 +335,94 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
 
     let processedText = text;
     
-    // 5. 落實防偽超連結驗證機制
+    // 5. 落實防偽超連結驗證機制 (嚴格上下文比對版)
     const markdownLinkRegex = /\[([^\]]+)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g;
     
-    const getUrisForRange = (start: number, end: number) => {
-      const uris = new Set<string>();
+    processedText = processedText.replace(markdownLinkRegex, (match, linkText, url, offset) => {
+      const cleanUrl = url.trim();
+      let aiDomain = '';
+      try { aiDomain = new URL(cleanUrl).hostname.replace(/^www\./, ''); } catch(e) {}
+
+      // 1. 取得上下文關聯的真實網址 (檢查連結前方 150 個字元內的 Grounding Supports，這通常涵蓋了引用的文字)
+      const searchStart = Math.max(0, offset - 150);
+      const searchEnd = offset;
+      
+      const contextualUris = new Set<string>();
       groundingSupports.forEach((support: any) => {
         const sStart = support.segment?.startIndex || 0;
         const sEnd = support.segment?.endIndex || 0;
-        // 檢查支持來源是否與連結本身重疊，或者位於連結前方 60 個字元內（涵蓋引用的文字）
-        if (sStart <= end && sEnd >= Math.max(0, start - 60)) {
+        if (sStart <= searchEnd && sEnd >= searchStart) {
           const indices = support.groundingChunkIndices || [];
           indices.forEach((i: number) => {
             const uri = groundingChunks[i]?.web?.uri;
-            if (uri) uris.add(uri);
+            if (uri) contextualUris.add(uri);
           });
         }
       });
-      return Array.from(uris);
-    };
 
-    processedText = processedText.replace(markdownLinkRegex, (match, linkText, url, offset) => {
-      const cleanUrl = url.trim();
-      
-      // 驗證 1: 系統會自動比對 AI 生成的網址與 Google Search 回傳的真實來源 (groundingChunks)
-      const isUrlInChunks = groundingChunks.some((c: any) => {
-        const chunkUri = c.web?.uri;
-        if (!chunkUri) return false;
-        const normalize = (u: string) => {
-          try {
-            const parsed = new URL(u);
-            return parsed.origin + parsed.pathname.replace(/\/$/, '');
-          } catch {
-            return u.split('?')[0].replace(/\/$/, '');
-          }
-        };
-        return normalize(chunkUri) === normalize(cleanUrl);
-      });
-      
-      if (isUrlInChunks) {
-        return `[${linkText}](${cleanUrl})`;
-      }
-
-      // 驗證 2: 透過 groundingSupports 找回真實網址 (檢查連結本身或其前方文字的支持來源)
-      const overlappingUris = getUrisForRange(offset, offset + match.length);
-      if (overlappingUris.length > 0) {
-        // 如果 AI 提供的網址與底層來源的網域相同，優先信任 AI 提供的網址
+      const normalizeUrl = (u: string) => {
         try {
-          const cleanDomain = new URL(cleanUrl).hostname;
-          const matchingDomainUri = overlappingUris.find(u => {
-            try { return new URL(u).hostname === cleanDomain; } catch { return false; }
-          });
-          if (matchingDomainUri) return `[${linkText}](${matchingDomainUri})`;
-        } catch (e) {}
-        
-        return `[${linkText}](${overlappingUris[0]})`;
+          const parsed = new URL(u);
+          return parsed.origin + parsed.pathname.replace(/\/$/, '');
+        } catch {
+          return u.split('?')[0].replace(/\/$/, '');
+        }
+      };
+
+      // 2. 檢查 AI 提供的網址是否「完全精確」存在於真實搜尋結果中
+      const exactMatchUri = groundingChunks.map((c:any) => c.web?.uri).find((u:string) => u && normalizeUrl(u) === normalizeUrl(cleanUrl));
+      
+      if (exactMatchUri) {
+          // 如果完全吻合，且在上下文中也有被支持，這是最完美的狀態
+          if (contextualUris.has(exactMatchUri)) {
+              return `[${linkText}](${exactMatchUri})`;
+          }
       }
 
-      // 驗證 3: 嘗試透過標題相似度進行模糊比對找回真實網址
-      let bestMatch = uniqueAllSources.find(s => 
-        linkText.includes(s.title) || s.title.includes(linkText) || 
-        (s.title && linkText.split(/[\s,，。、]+/).some(word => word.length > 1 && s.title.includes(word)))
-      );
-      
-      if (bestMatch) {
-        return `[${linkText}](${bestMatch.uri})`;
+      // 3. 網域比對：AI 常會捏造路徑但網域是對的。檢查上下文來源中是否有同網域的真實網址
+      if (aiDomain) {
+          const domainMatchUri = Array.from(contextualUris).find(u => {
+              try { return new URL(u).hostname.includes(aiDomain); } catch(e) { return false; }
+          });
+          if (domainMatchUri) {
+              return `[${linkText}](${domainMatchUri})`;
+          }
       }
+
+      // 4. 媒體名稱比對：從 linkText 萃取媒體名稱 (例如 "2026-03-14 中央社" -> "中央社")
+      const publisherMatch = linkText.match(/\d{4}-\d{2}-\d{2}\s+(.+)/);
+      const publisherName = publisherMatch ? publisherMatch[1].trim() : linkText;
       
-      // 驗證失敗：若仍無法確認真實性，則會直接捨棄該連結，確保畫面上出現的每一個連結都是真實且可點擊的
+      if (publisherName.length > 1) {
+          // 在上下文來源中尋找標題包含該媒體名稱的真實網址
+          const titleMatchUri = Array.from(contextualUris).find(u => {
+              const source = uniqueAllSources.find(s => s.uri === u);
+              return source && source.title.includes(publisherName);
+          });
+          if (titleMatchUri) {
+              return `[${linkText}](${titleMatchUri})`;
+          }
+      }
+
+      // 5. 降級信任：如果 AI 提供的網址是真實存在的 (exactMatchUri)，即使不在緊鄰的上下文中，我們仍可信任它
+      if (exactMatchUri) {
+          return `[${linkText}](${exactMatchUri})`;
+      }
+
+      // 6. 唯一來源推論：如果這段引言的上下文中「只有一個」真實來源支撐，那極大機率就是它
+      if (contextualUris.size === 1) {
+          return `[${linkText}](${Array.from(contextualUris)[0]})`;
+      }
+
+      // 7. 全局唯一媒體推論：如果今天該媒體在所有搜尋結果中只有一篇報導，那必定是那一篇
+      if (publisherName.length > 1) {
+          const allPublisherUris = uniqueAllSources.filter(s => s.title.includes(publisherName)).map(s => s.uri);
+          if (allPublisherUris.length === 1) {
+              return `[${linkText}](${allPublisherUris[0]})`;
+          }
+      }
+
+      // 8. 驗證失敗：捨棄超連結，轉為純文字
       return `${linkText}【資料不足，無法確認】`;
     });
 
