@@ -238,8 +238,11 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
 【深度檢索與引用規範】執行時請遵守以下步驟：
 1. 搜尋來源：僅限使用官方網站、學術論文或知名新聞媒體的資料。
 2. 摘錄內容：針對每個關鍵論點，先引用原始網頁中的一段話（不超過10個字）。
-3. 標註連結：在引用後方提供完整的「日期＋媒體名稱」的超連結。請確保連結為當下可點擊且直接連往該關鍵論點頁面的網址。
-4. 最終校核：在輸出前，請再次檢查該連結是否存在於你的檢索結果中。絕對禁止虛妄連結：超連結網址必須是「真實存在」且「直接連到該篇新聞」的絕對網址。你必須從 Google Search 的結果 (Grounding Sources) 中精確複製該新聞的真實 URL。如果找不到直接連結，請直接註明【資料不足，無法確認】，嚴禁拼湊網址。
+3. 標註連結：在引用後方提供完整的「日期＋媒體名稱」的超連結。
+   - ⚠️ 極度重要：你必須「完全精確複製」Google Search 結果 (Grounding Sources) 中提供的真實 URL。
+   - ⚠️ 絕對禁止：嚴禁自行拼湊、猜測、或修改網址。如果搜尋結果中沒有直接連結，請直接註明【資料不足，無法確認】。
+   - ⚠️ 格式要求：請務必將超連結放在引號「」的外面，絕對不要把引號或引言包進超連結中。正確格式：...「引用不超過10字」 [2026-03-14 中央社](https://www.cna.com.tw/...)。
+4. 最終校核：在輸出前，請再次檢查該連結是否存在於你的檢索結果中。絕對禁止虛妄連結。
 
 【🔴 絕對強制指令 - 違反將導致系統錯誤 🔴】：
 1. 搜尋策略：你呼叫 Google Search 工具時，搜尋關鍵字「必須」包含年份 "${currentYear}" 與月份 "${currentMonth}月" 以及日期 "${todayStr}"，並強制加上 "after:${yesterdayStr} before:${tomorrowStr}" 參數，以確保搜尋引擎只回傳當日的結果。
@@ -263,8 +266,11 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
 【深度檢索與引用規範】執行時請遵守以下步驟：
 1. 搜尋來源：僅限使用官方網站、學術論文或知名新聞媒體的資料。
 2. 摘錄內容：針對每個關鍵論點，先引用原始網頁中的一段話（不超過10個字）。
-3. 標註連結：在引用後方提供完整的「日期＋媒體名稱」的超連結。請確保連結為當下可點擊且直接連往該關鍵論點頁面的網址。
-4. 最終校核：在輸出前，請再次檢查該連結是否存在於你的檢索結果中。絕對禁止虛妄連結：超連結網址必須是「真實存在」且「直接連到該篇新聞」的絕對網址。你必須從 Google Search 的結果 (Grounding Sources) 中精確複製該新聞的真實 URL。如果找不到直接連結，請直接註明【資料不足，無法確認】，嚴禁拼湊網址。
+3. 標註連結：在引用後方提供完整的「日期＋媒體名稱」的超連結。
+   - ⚠️ 極度重要：你必須「完全精確複製」Google Search 結果 (Grounding Sources) 中提供的真實 URL。
+   - ⚠️ 絕對禁止：嚴禁自行拼湊、猜測、或修改網址。如果搜尋結果中沒有直接連結，請直接註明【資料不足，無法確認】。
+   - ⚠️ 格式要求：請務必將超連結放在引號「」的外面，絕對不要把引號或引言包進超連結中。正確格式：...「引用不超過10字」 [2026-03-14 中央社](https://www.cna.com.tw/...)。
+4. 最終校核：在輸出前，請再次檢查該連結是否存在於你的檢索結果中。絕對禁止虛妄連結。
 
 【🔴 絕對強制指令 - 違反將導致系統錯誤 🔴】：
 1. 搜尋策略：你呼叫 Google Search 工具時，搜尋關鍵字「必須」包含年份 "${currentYear}" 與月份 "${currentMonth}月" 以及日期 "${todayStr}"，並強制加上 "after:${oneWeekAgoStr} before:${tomorrowStr}" 參數，確保只獲取過去一週的資料。
@@ -292,7 +298,7 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
       contents: prompt,
       config: {
         tools: [{ googleSearch: {} }],
-        temperature: 0.2,
+        temperature: 0.1,
       },
     }), isPaidKey);
 
@@ -691,7 +697,12 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
   }
 }
 
-export async function fetchOverallThreatLevel(customApiKey?: string, forceRefresh = false, isPaidKey = false): Promise<ThreatLevelData> {
+export async function fetchOverallThreatLevel(
+  customApiKey?: string, 
+  forceRefresh = false, 
+  isPaidKey = false,
+  weights = { military: 60, economic: 20, diplomatic: 10, cognitive: 10 }
+): Promise<ThreatLevelData> {
   const cleanApiKey = customApiKey?.trim().replace(/[\s\uFEFF\xA0]/g, '').replace(/[^a-zA-Z0-9_-]/g, '');
   if (!cleanApiKey) {
     return {
@@ -730,10 +741,10 @@ export async function fetchOverallThreatLevel(customApiKey?: string, forceRefres
 3. 連結正確性：系統會自動抓取你參考的網頁作為 Verified Sources。請確保你只依賴「真實存在、且為最新發布」的搜尋結果。
 
 請依據以下四個面向給予 0~100 的威脅評分，並套用權重計算總分 (Total Score)：
-1. 軍事動態 (Military) - 權重 60%
-2. 經濟封鎖 (Economic) - 權重 20%
-3. 外交打壓 (Diplomatic) - 權重 10%
-4. 認知作戰 (Cognitive) - 權重 10%
+1. 軍事動態 (Military) - 權重 ${weights.military}%
+2. 經濟封鎖 (Economic) - 權重 ${weights.economic}%
+3. 外交打壓 (Diplomatic) - 權重 ${weights.diplomatic}%
+4. 認知作戰 (Cognitive) - 權重 ${weights.cognitive}%
 
 總分計算後，請依據以下標準定義威脅等級 (Level)：
 - 0~20: LOW (低威脅)

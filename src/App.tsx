@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { Crosshair, TrendingDown, Globe, RefreshCw, AlertTriangle, ExternalLink, Radar, Clock, Flame, Key, Lock, Unlock, Copy, Check, Activity, Eye, EyeOff, ChevronDown, ChevronUp } from 'lucide-react';
+import { Crosshair, TrendingDown, Globe, RefreshCw, AlertTriangle, ExternalLink, Radar, Clock, Flame, Key, Lock, Unlock, Copy, Check, Activity, Eye, EyeOff, ChevronDown, ChevronUp, Settings } from 'lucide-react';
 import Markdown from 'react-markdown';
 import { motion, AnimatePresence } from 'motion/react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
@@ -188,7 +188,24 @@ export default function App() {
   const [loadingStartTime, setLoadingStartTime] = useState<Record<string, Date>>({});
   const [loadingDuration, setLoadingDuration] = useState<Record<string, number>>({});
   const [autoRefresh, setAutoRefresh] = useState(false);
+  const [autoRefreshInterval, setAutoRefreshInterval] = useState(() => {
+    try {
+      const saved = localStorage.getItem('autoRefreshInterval');
+      return saved ? parseInt(saved, 10) : 6;
+    } catch {
+      return 6;
+    }
+  });
+  const [scoreWeights, setScoreWeights] = useState(() => {
+    try {
+      const saved = localStorage.getItem('scoreWeights');
+      return saved ? JSON.parse(saved) : { military: 60, economic: 20, diplomatic: 10, cognitive: 10 };
+    } catch {
+      return { military: 60, economic: 20, diplomatic: 10, cognitive: 10 };
+    }
+  });
   const [showThreatDetails, setShowThreatDetails] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
   const [globalRefreshTrigger, setGlobalRefreshTrigger] = useState(0);
 
   useEffect(() => {
@@ -243,7 +260,7 @@ export default function App() {
   const loadThreatLevel = async (keyOverride?: string, force = false, isPaidOverride?: boolean) => {
     setThreatLoading(true);
     try {
-      const data = await fetchOverallThreatLevel(keyOverride ?? customApiKey, force, isPaidOverride ?? isPaidApiKey);
+      const data = await fetchOverallThreatLevel(keyOverride ?? customApiKey, force, isPaidOverride ?? isPaidApiKey, scoreWeights);
       if (data.isRateLimited) {
         setApiKeyModalReason(data.isDailyLimit ? 'DAILY_LIMIT' : 'RATE_LIMIT');
         setShowApiKeyInput(true);
@@ -329,14 +346,23 @@ export default function App() {
   }, [activeTab]);
 
   useEffect(() => {
+    try {
+      localStorage.setItem('autoRefreshInterval', autoRefreshInterval.toString());
+      localStorage.setItem('scoreWeights', JSON.stringify(scoreWeights));
+    } catch (e) {
+      // ignore
+    }
+  }, [autoRefreshInterval, scoreWeights]);
+
+  useEffect(() => {
     let interval: NodeJS.Timeout;
-    if (autoRefresh) {
+    if (autoRefresh && autoRefreshInterval > 0) {
       interval = setInterval(() => {
         handleRefreshAll();
-      }, 6 * 60 * 60 * 1000); // 6 hours
+      }, autoRefreshInterval * 60 * 60 * 1000);
     }
     return () => clearInterval(interval);
-  }, [autoRefresh, activeTab, customApiKey]);
+  }, [autoRefresh, autoRefreshInterval, activeTab, customApiKey]);
 
   const handleRefreshAll = (keyOverride?: string, isPaidOverride?: boolean) => {
     clearDataCache();
@@ -455,6 +481,13 @@ export default function App() {
                 title="更換 API 金鑰"
               >
                 <Key className="w-5 h-5 text-zinc-400" />
+              </button>
+              <button 
+                onClick={() => setShowSettings(true)}
+                className="p-2 hover:bg-zinc-800 rounded-full transition-colors"
+                title="系統設定"
+              >
+                <Settings className="w-5 h-5 text-zinc-400" />
               </button>
             </div>
           </div>
@@ -659,6 +692,13 @@ export default function App() {
         </div>
         
         <TimelineView apiKey={customApiKey} isPaidApiKey={isPaidApiKey} refreshTrigger={globalRefreshTrigger} />
+        
+        {/* Footer */}
+        <footer className="w-full text-center py-6 mt-8 border-t border-zinc-800/50">
+          <a href="mailto:dr.barret.lin@gmail.com" className="text-zinc-500 hover:text-zinc-300 transition-colors text-sm font-mono">
+            dr.barret.lin@gmail.com
+          </a>
+        </footer>
       </div>
 
       {/* API Key Input Modal */}
@@ -846,19 +886,19 @@ export default function App() {
                     <h3 className="text-sm font-mono text-zinc-500 uppercase tracking-wider mb-3">Dimension Scores (權重評分)</h3>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
                       <div className="bg-[#111] p-3 tech-border text-center">
-                        <div className="text-xs text-zinc-400 mb-1">軍事 (60%)</div>
+                        <div className="text-xs text-zinc-400 mb-1">軍事 ({scoreWeights.military}%)</div>
                         <div className="text-3xl font-bold font-mono text-red-400">{threatLevel.scores.military}</div>
                       </div>
                       <div className="bg-[#111] p-3 tech-border text-center">
-                        <div className="text-xs text-zinc-400 mb-1">經濟 (20%)</div>
+                        <div className="text-xs text-zinc-400 mb-1">經濟 ({scoreWeights.economic}%)</div>
                         <div className="text-3xl font-bold font-mono text-orange-400">{threatLevel.scores.economic}</div>
                       </div>
                       <div className="bg-[#111] p-3 tech-border text-center">
-                        <div className="text-xs text-zinc-400 mb-1">外交 (10%)</div>
+                        <div className="text-xs text-zinc-400 mb-1">外交 ({scoreWeights.diplomatic}%)</div>
                         <div className="text-3xl font-bold font-mono text-blue-400">{threatLevel.scores.diplomatic}</div>
                       </div>
                       <div className="bg-[#111] p-3 tech-border text-center">
-                        <div className="text-xs text-zinc-400 mb-1">認知 (10%)</div>
+                        <div className="text-xs text-zinc-400 mb-1">認知 ({scoreWeights.cognitive}%)</div>
                         <div className="text-3xl font-bold font-mono text-purple-400">{threatLevel.scores.cognitive}</div>
                       </div>
                     </div>
@@ -868,10 +908,10 @@ export default function App() {
                         <PieChart>
                           <Pie
                             data={[
-                              { name: '軍事 (Military)', value: threatLevel.scores.military * 0.4, color: '#ef4444' },
-                              { name: '經濟 (Economic)', value: threatLevel.scores.economic * 0.25, color: '#f97316' },
-                              { name: '外交 (Diplomatic)', value: threatLevel.scores.diplomatic * 0.2, color: '#3b82f6' },
-                              { name: '認知 (Cognitive)', value: threatLevel.scores.cognitive * 0.15, color: '#a855f7' },
+                              { name: '軍事 (Military)', value: threatLevel.scores.military * (scoreWeights.military / 100), color: '#ef4444' },
+                              { name: '經濟 (Economic)', value: threatLevel.scores.economic * (scoreWeights.economic / 100), color: '#f97316' },
+                              { name: '外交 (Diplomatic)', value: threatLevel.scores.diplomatic * (scoreWeights.diplomatic / 100), color: '#3b82f6' },
+                              { name: '認知 (Cognitive)', value: threatLevel.scores.cognitive * (scoreWeights.cognitive / 100), color: '#a855f7' },
                             ]}
                             cx="50%"
                             cy="50%"
@@ -882,10 +922,10 @@ export default function App() {
                           >
                             {
                               [
-                                { name: '軍事 (Military)', value: threatLevel.scores.military * 0.4, color: '#ef4444' },
-                                { name: '經濟 (Economic)', value: threatLevel.scores.economic * 0.25, color: '#f97316' },
-                                { name: '外交 (Diplomatic)', value: threatLevel.scores.diplomatic * 0.2, color: '#3b82f6' },
-                                { name: '認知 (Cognitive)', value: threatLevel.scores.cognitive * 0.15, color: '#a855f7' },
+                                { name: '軍事 (Military)', value: threatLevel.scores.military * (scoreWeights.military / 100), color: '#ef4444' },
+                                { name: '經濟 (Economic)', value: threatLevel.scores.economic * (scoreWeights.economic / 100), color: '#f97316' },
+                                { name: '外交 (Diplomatic)', value: threatLevel.scores.diplomatic * (scoreWeights.diplomatic / 100), color: '#3b82f6' },
+                                { name: '認知 (Cognitive)', value: threatLevel.scores.cognitive * (scoreWeights.cognitive / 100), color: '#a855f7' },
                               ].map((entry, index) => (
                                 <Cell key={`cell-${index}`} fill={entry.color} />
                               ))
@@ -911,6 +951,133 @@ export default function App() {
                     </div>
                   </div>
                 )}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Settings Modal */}
+      <AnimatePresence>
+        {showSettings && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+            onClick={() => setShowSettings(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-[#0a0a0a] border border-zinc-800 p-6 max-w-md w-full shadow-2xl relative"
+            >
+              <button
+                onClick={() => setShowSettings(false)}
+                className="absolute top-4 right-4 text-zinc-500 hover:text-zinc-300 transition-colors"
+              >
+                ✕
+              </button>
+              
+              <div className="flex items-center gap-3 mb-6">
+                <Settings className="w-6 h-6 text-zinc-400" />
+                <h2 className="text-xl font-bold font-mono uppercase tracking-wider text-zinc-100">系統設定</h2>
+              </div>
+
+              <div className="space-y-6">
+                <div>
+                  <label className="block text-sm font-mono text-zinc-400 mb-2">
+                    自動更新間隔 (Auto Refresh Interval)
+                  </label>
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="number"
+                      min="0"
+                      max="24"
+                      value={autoRefreshInterval}
+                      onChange={(e) => setAutoRefreshInterval(Math.max(0, parseInt(e.target.value) || 0))}
+                      className="w-24 bg-[#111] border border-zinc-800 rounded px-3 py-2 text-zinc-100 font-mono focus:outline-none focus:border-red-500/50 transition-colors"
+                    />
+                    <span className="text-sm text-zinc-500 font-mono">小時 (Hours)</span>
+                  </div>
+                  <p className="text-xs text-zinc-500 mt-1">設定為 0 表示停用自動更新。</p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-mono text-zinc-400 mb-3">
+                    威脅評分權重 (Threat Score Weights)
+                  </label>
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between gap-4">
+                      <span className="text-sm text-zinc-300 w-20">軍事 (Military)</span>
+                      <input
+                        type="range"
+                        min="0"
+                        max="100"
+                        value={scoreWeights.military}
+                        onChange={(e) => setScoreWeights({ ...scoreWeights, military: parseInt(e.target.value) })}
+                        className="flex-1 accent-red-500"
+                      />
+                      <span className="text-sm font-mono text-zinc-400 w-12 text-right">{scoreWeights.military}%</span>
+                    </div>
+                    <div className="flex items-center justify-between gap-4">
+                      <span className="text-sm text-zinc-300 w-20">經濟 (Economic)</span>
+                      <input
+                        type="range"
+                        min="0"
+                        max="100"
+                        value={scoreWeights.economic}
+                        onChange={(e) => setScoreWeights({ ...scoreWeights, economic: parseInt(e.target.value) })}
+                        className="flex-1 accent-orange-500"
+                      />
+                      <span className="text-sm font-mono text-zinc-400 w-12 text-right">{scoreWeights.economic}%</span>
+                    </div>
+                    <div className="flex items-center justify-between gap-4">
+                      <span className="text-sm text-zinc-300 w-20">外交 (Diplomatic)</span>
+                      <input
+                        type="range"
+                        min="0"
+                        max="100"
+                        value={scoreWeights.diplomatic}
+                        onChange={(e) => setScoreWeights({ ...scoreWeights, diplomatic: parseInt(e.target.value) })}
+                        className="flex-1 accent-blue-500"
+                      />
+                      <span className="text-sm font-mono text-zinc-400 w-12 text-right">{scoreWeights.diplomatic}%</span>
+                    </div>
+                    <div className="flex items-center justify-between gap-4">
+                      <span className="text-sm text-zinc-300 w-20">認知 (Cognitive)</span>
+                      <input
+                        type="range"
+                        min="0"
+                        max="100"
+                        value={scoreWeights.cognitive}
+                        onChange={(e) => setScoreWeights({ ...scoreWeights, cognitive: parseInt(e.target.value) })}
+                        className="flex-1 accent-purple-500"
+                      />
+                      <span className="text-sm font-mono text-zinc-400 w-12 text-right">{scoreWeights.cognitive}%</span>
+                    </div>
+                  </div>
+                  <div className="mt-2 text-xs text-zinc-500 flex justify-between">
+                    <span>總和: {scoreWeights.military + scoreWeights.economic + scoreWeights.diplomatic + scoreWeights.cognitive}%</span>
+                    {scoreWeights.military + scoreWeights.economic + scoreWeights.diplomatic + scoreWeights.cognitive !== 100 && (
+                      <span className="text-yellow-500">⚠️ 建議總和為 100%</span>
+                    )}
+                  </div>
+                </div>
+
+                <div className="pt-4 border-t border-zinc-800 flex justify-end">
+                  <button
+                    onClick={() => {
+                      setShowSettings(false);
+                      handleRefreshAll();
+                    }}
+                    className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-100 rounded transition-colors font-mono text-sm"
+                  >
+                    完成並重新整理 (Done & Refresh)
+                  </button>
+                </div>
               </div>
             </motion.div>
           </motion.div>
