@@ -238,10 +238,10 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
 【注意】：已取消「過去24小時」的定義，請嚴格只抓取「當日」的資料。
 
 【深度檢索與引用規範】執行時請遵守以下步驟：
-- 搜尋來源：僅限使用官方網站、學術論文或知名新聞媒體的資料。
-- 摘錄內容：針對每個關鍵論點，先引用原始網頁中的一段話。
-- 標註來源：在引用後方，請以純文字括號標註「日期＋媒體名稱」（例如：【2026-03-14 中央社】）。絕對不要使用 Markdown 超連結格式，也不要附上網址。
-- 嚴禁提供網址：報告內文請保持純文字閱讀體驗，系統會在下方統一列出參考來源，內文不需要任何網址。
+1. 搜尋來源：僅限使用官方網站、學術論文或知名新聞媒體的資料。
+2. 摘錄內容：針對每個關鍵論點，先引用原始網頁中的一段話（不超過10個字）。
+3. 標註連結：在引用後方提供完整的「日期＋媒體名稱」的超連結。請確保連結為當下可點擊且直接連往該關鍵論點頁面的網址。
+4. 最終校核：在輸出前，請再次檢查該連結是否存在於你的檢索結果中。絕對禁止虛妄連結：超連結網址必須是「真實存在」且「直接連到該篇新聞」的絕對網址。你必須從 Google Search 的結果 (Grounding Sources) 中精確複製該新聞的真實 URL。如果找不到直接連結，請直接註明【資料不足，無法確認】，嚴禁拼湊網址。
 
 【🔴 絕對強制指令 - 違反將導致系統錯誤 🔴】：
 1. 搜尋策略：你呼叫 Google Search 工具時，搜尋關鍵字「必須」包含年份 "${currentYear}" 與月份 "${currentMonth}月" 以及日期 "${todayStr}"，並強制加上 "after:${yesterdayStr} before:${tomorrowStr}" 參數，以確保搜尋引擎只回傳當日的結果。
@@ -252,7 +252,7 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
 請使用 Markdown 格式排版，包含以下內容：
 1. **近期重大事件**：請分析並列出當日與台海相關的重大「軍事」、「經濟」、「外交」或「認知作戰」的事件。
    - 格式：請具體寫出時間點與消息來源，並「強制標示該新聞的發布日期與時間」。
-   - 來源標註要求：所有引用媒體的內容，在引用後方【必須】以純文字標註來源（例如：...引用內容... 【2026-03-14 中央社】），絕對禁止產生超連結。
+   - 連結強制要求：所有引用媒體的內容，在引用後方【必須】使用 Markdown 超連結格式包裝（例如：...「引用不超過10字」... [2026-03-14 中央社](https://www.cna.com.tw/...)）。
 2. **威脅評估**：分析這些行動對台灣的整體影響與威脅程度。
 3. **戰略意圖分析**：簡述背後可能的戰略或政治目的。
 
@@ -262,10 +262,10 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
 請扮演頂尖的開源情報（OSINT）分析師。你的任務是彙整「當日（台灣時間 ${todayStr} 00:00 至 23:59）」關於中國對台灣的「${categoryQuery}」最新動態與新聞。
 
 【深度檢索與引用規範】執行時請遵守以下步驟：
-- 搜尋來源：僅限使用官方網站、學術論文或知名新聞媒體的資料。
-- 摘錄內容：針對每個關鍵論點，先引用原始網頁中的一段話。
-- 標註來源：在引用後方，請以純文字括號標註「日期＋媒體名稱」（例如：【2026-03-14 中央社】）。絕對不要使用 Markdown 超連結格式，也不要附上網址。
-- 嚴禁提供網址：報告內文請保持純文字閱讀體驗，系統會在下方統一列出參考來源，內文不需要任何網址。
+1. 搜尋來源：僅限使用官方網站、學術論文或知名新聞媒體的資料。
+2. 摘錄內容：針對每個關鍵論點，先引用原始網頁中的一段話（不超過10個字）。
+3. 標註連結：在引用後方提供完整的「日期＋媒體名稱」的超連結。請確保連結為當下可點擊且直接連往該關鍵論點頁面的網址。
+4. 最終校核：在輸出前，請再次檢查該連結是否存在於你的檢索結果中。絕對禁止虛妄連結：超連結網址必須是「真實存在」且「直接連到該篇新聞」的絕對網址。你必須從 Google Search 的結果 (Grounding Sources) 中精確複製該新聞的真實 URL。如果找不到直接連結，請直接註明【資料不足，無法確認】，嚴禁拼湊網址。
 
 【🔴 絕對強制指令 - 違反將導致系統錯誤 🔴】：
 1. 搜尋策略：你呼叫 Google Search 工具時，搜尋關鍵字「必須」包含年份 "${currentYear}" 與月份 "${currentMonth}月" 以及日期 "${todayStr}"，並強制加上 "after:${yesterdayStr} before:${tomorrowStr}" 參數，確保只獲取當日的資料。
@@ -276,7 +276,7 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
 請使用 Markdown 格式排版，包含以下內容：
 1. **近期重大事件**：列出具體事件。
    - 格式：請具體寫出時間點與消息來源，並「強制標示該新聞的發布日期與時間」。
-   - 來源標註要求：所有引用媒體的內容，在引用後方【必須】以純文字標註來源（例如：...引用內容... 【2026-03-14 中央社】），絕對禁止產生超連結。
+   - 連結強制要求：所有引用媒體的內容，在引用後方【必須】使用 Markdown 超連結格式包裝（例如：...「引用不超過10字」... [2026-03-14 中央社](https://www.cna.com.tw/...)）。
 2. **威脅評估**：分析這些行動對台灣的影響與威脅程度。
 3. **戰略意圖分析**：簡述背後可能的戰略或政治目的。
 
@@ -335,10 +335,76 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
 
     let processedText = text;
     
-    // Strip any markdown links that the AI might have still generated
-    // e.g., [2026-03-14 中央社](https://...) -> 【2026-03-14 中央社】
-    const markdownLinkRegex = /\[([^\]]+)\]\([^)\s]+(?:\s+"[^"]*")?\)/g;
-    processedText = processedText.replace(markdownLinkRegex, '【$1】');
+    // 5. 落實防偽超連結驗證機制
+    const markdownLinkRegex = /\[([^\]]+)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g;
+    
+    const getUrisForRange = (start: number, end: number) => {
+      const uris = new Set<string>();
+      groundingSupports.forEach((support: any) => {
+        const sStart = support.segment?.startIndex || 0;
+        const sEnd = support.segment?.endIndex || 0;
+        // 檢查支持來源是否與連結本身重疊，或者位於連結前方 60 個字元內（涵蓋引用的文字）
+        if (sStart <= end && sEnd >= Math.max(0, start - 60)) {
+          const indices = support.groundingChunkIndices || [];
+          indices.forEach((i: number) => {
+            const uri = groundingChunks[i]?.web?.uri;
+            if (uri) uris.add(uri);
+          });
+        }
+      });
+      return Array.from(uris);
+    };
+
+    processedText = processedText.replace(markdownLinkRegex, (match, linkText, url, offset) => {
+      const cleanUrl = url.trim();
+      
+      // 驗證 1: 系統會自動比對 AI 生成的網址與 Google Search 回傳的真實來源 (groundingChunks)
+      const isUrlInChunks = groundingChunks.some((c: any) => {
+        const chunkUri = c.web?.uri;
+        if (!chunkUri) return false;
+        const normalize = (u: string) => {
+          try {
+            const parsed = new URL(u);
+            return parsed.origin + parsed.pathname.replace(/\/$/, '');
+          } catch {
+            return u.split('?')[0].replace(/\/$/, '');
+          }
+        };
+        return normalize(chunkUri) === normalize(cleanUrl);
+      });
+      
+      if (isUrlInChunks) {
+        return `[${linkText}](${cleanUrl})`;
+      }
+
+      // 驗證 2: 透過 groundingSupports 找回真實網址 (檢查連結本身或其前方文字的支持來源)
+      const overlappingUris = getUrisForRange(offset, offset + match.length);
+      if (overlappingUris.length > 0) {
+        // 如果 AI 提供的網址與底層來源的網域相同，優先信任 AI 提供的網址
+        try {
+          const cleanDomain = new URL(cleanUrl).hostname;
+          const matchingDomainUri = overlappingUris.find(u => {
+            try { return new URL(u).hostname === cleanDomain; } catch { return false; }
+          });
+          if (matchingDomainUri) return `[${linkText}](${matchingDomainUri})`;
+        } catch (e) {}
+        
+        return `[${linkText}](${overlappingUris[0]})`;
+      }
+
+      // 驗證 3: 嘗試透過標題相似度進行模糊比對找回真實網址
+      let bestMatch = uniqueAllSources.find(s => 
+        linkText.includes(s.title) || s.title.includes(linkText) || 
+        (s.title && linkText.split(/[\s,，。、]+/).some(word => word.length > 1 && s.title.includes(word)))
+      );
+      
+      if (bestMatch) {
+        return `[${linkText}](${bestMatch.uri})`;
+      }
+      
+      // 驗證失敗：若仍無法確認真實性，則會直接捨棄該連結，確保畫面上出現的每一個連結都是真實且可點擊的
+      return `${linkText}【資料不足，無法確認】`;
+    });
 
     const result = {
       text: processedText,
