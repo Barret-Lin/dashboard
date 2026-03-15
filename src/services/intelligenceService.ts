@@ -248,7 +248,7 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
 請使用 Markdown 格式排版，包含以下內容：
 1. **近期重大事件**：請分析並列出當日與台海相關的重大「軍事」、「經濟」、「外交」或「認知作戰」的事件。
    - 格式：請具體寫出時間點與消息來源，並「強制標示該新聞的發布日期與時間」。
-   - 連結強制要求：所有引用媒體的內容，在引用後方【必須】使用 Markdown 超連結格式包裝（例如：...「引用不超過10字」... [2026-03-14 中央社](https://www.cna.com.tw/...)）。
+   - 連結強制要求：請務必將超連結放在引號「」的外面，絕對不要把引號或引言包進超連結中。正確格式：...「引用不超過10字」 [2026-03-14 中央社](https://www.cna.com.tw/...)。
 2. **威脅評估**：分析這些行動對台灣的整體影響與威脅程度。
 3. **戰略意圖分析**：簡述背後可能的戰略或政治目的。
 
@@ -272,7 +272,7 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
 請使用 Markdown 格式排版，包含以下內容：
 1. **近期重大事件**：列出具體事件。
    - 格式：請具體寫出時間點與消息來源，並「強制標示該新聞的發布日期與時間」。
-   - 連結強制要求：所有引用媒體的內容，在引用後方【必須】使用 Markdown 超連結格式包裝（例如：...「引用不超過10字」... [2026-03-14 中央社](https://www.cna.com.tw/...)）。
+   - 連結強制要求：請務必將超連結放在引號「」的外面，絕對不要把引號或引言包進超連結中。正確格式：...「引用不超過10字」 [2026-03-14 中央社](https://www.cna.com.tw/...)。
 2. **威脅評估**：分析這些行動對台灣的影響與威脅程度。
 3. **戰略意圖分析**：簡述背後可能的戰略或政治目的。
 
@@ -331,7 +331,7 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
 
     let processedText = text;
     
-    // 5. 落實防偽超連結驗證機制 (極致嚴格：基於最近鄰 Grounding Support)
+    // 5. 落實防偽超連結驗證機制 (全局與局部綜合驗證版)
     const markdownLinkRegex = /\[([^\]]+)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g;
     
     processedText = processedText.replace(markdownLinkRegex, (match, linkText, url, offset) => {
@@ -339,14 +339,26 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
       let aiDomain = '';
       try { aiDomain = new URL(cleanUrl).hostname.replace(/^www\./, ''); } catch(e) {}
 
-      const publisherMatch = linkText.match(/\d{4}-\d{2}-\d{2}\s+(.+)/);
-      const publisherName = publisherMatch ? publisherMatch[1].trim() : linkText;
+      let prefix = '';
+      let actualLinkText = linkText;
+      
+      // 修正 AI 將引號或部分引言包進超連結的錯誤格式
+      // 例如: "[影片」 2026-03-15 中央社](url)" -> prefix: "影片」 ", actualLinkText: "2026-03-15 中央社"
+      const malformedMatch = linkText.match(/^(.*?[」】"']\s*)(.+)$/);
+      if (malformedMatch) {
+        prefix = malformedMatch[1];
+        actualLinkText = malformedMatch[2];
+      }
+
+      const parts = actualLinkText.trim().split(/\s+/);
+      const publisherName = parts.length > 1 ? parts[parts.length - 1] : actualLinkText;
 
       // 1. 尋找與此引言最相關的 Grounding Support
       // 搜尋範圍：連結前方 150 字元 (涵蓋引言) 到連結結束
       const searchStart = Math.max(0, offset - 150);
       const searchEnd = offset + match.length;
       
+      const contextualUris = new Set<string>();
       let closestSupport: any = null;
       let minDistance = Infinity;
 
@@ -356,6 +368,12 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
         
         // 檢查此 support 是否落在我們的搜尋視窗內
         if (sStart <= searchEnd && sEnd >= searchStart) {
+          const indices = support.groundingChunkIndices || [];
+          indices.forEach((i: number) => {
+            const uri = groundingChunks[i]?.web?.uri;
+            if (uri) contextualUris.add(uri);
+          });
+          
           // 計算 support 結尾與連結起點的距離 (越近代表越有可能是該引言的來源)
           const distance = Math.abs(offset - sEnd);
           if (distance < minDistance) {
@@ -365,24 +383,13 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
         }
       });
 
-      if (!closestSupport) {
+      const candidateUrisArray = Array.from(contextualUris);
+
+      if (candidateUrisArray.length === 0) {
         // 如果在這段文字附近完全找不到 Google Search 的底層支持來源，直接捨棄
-        return `${linkText}【資料不足，無法確認】`;
+        return `${prefix}${actualLinkText}【資料不足，無法確認】`;
       }
 
-      const indices = closestSupport.groundingChunkIndices || [];
-      const candidateUris = indices.map((i: number) => groundingChunks[i]?.web?.uri).filter(Boolean);
-
-      if (candidateUris.length === 0) {
-        return `${linkText}【資料不足，無法確認】`;
-      }
-
-      // 如果只有一個候選網址，這就是 100% 精確的來源
-      if (candidateUris.length === 1) {
-        return `[${linkText}](${candidateUris[0]})`;
-      }
-
-      // 如果有多個候選網址 (這段文字綜合了多個來源)，我們需要進行消歧義
       const normalizeUrl = (u: string) => {
         try {
           const parsed = new URL(u);
@@ -393,28 +400,36 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
       };
 
       // 消歧義 1: AI 提供的網址剛好完全命中其中一個候選網址
-      const exactMatch = candidateUris.find((u: string) => normalizeUrl(u) === normalizeUrl(cleanUrl));
-      if (exactMatch) return `[${linkText}](${exactMatch})`;
+      const exactMatch = candidateUrisArray.find(u => normalizeUrl(u) === normalizeUrl(cleanUrl));
+      if (exactMatch) return `${prefix}[${actualLinkText}](${exactMatch})`;
 
       // 消歧義 2: AI 提供的網域命中其中一個候選網址
       if (aiDomain) {
-        const domainMatch = candidateUris.find((u: string) => {
+        const domainMatch = candidateUrisArray.find(u => {
           try { return new URL(u).hostname.includes(aiDomain); } catch(e) { return false; }
         });
-        if (domainMatch) return `[${linkText}](${domainMatch})`;
+        if (domainMatch) return `${prefix}[${actualLinkText}](${domainMatch})`;
       }
 
       // 消歧義 3: 媒體名稱命中其中一個候選網址的標題
       if (publisherName.length > 1) {
-        const titleMatch = candidateUris.find((u: string) => {
+        const titleMatch = candidateUrisArray.find(u => {
           const source = uniqueAllSources.find(s => s.uri === u);
           return source && source.title.includes(publisherName);
         });
-        if (titleMatch) return `[${linkText}](${titleMatch})`;
+        if (titleMatch) return `${prefix}[${actualLinkText}](${titleMatch})`;
       }
 
-      // 消歧義失敗：預設使用最相關支持來源的第一個網址
-      return `[${linkText}](${candidateUris[0]})`;
+      // 消歧義 4: 預設使用距離最近的支持來源的第一個網址
+      if (closestSupport) {
+        const indices = closestSupport.groundingChunkIndices || [];
+        const closestUris = indices.map((i: number) => groundingChunks[i]?.web?.uri).filter(Boolean);
+        if (closestUris.length > 0) {
+          return `${prefix}[${actualLinkText}](${closestUris[0]})`;
+        }
+      }
+
+      return `${prefix}[${actualLinkText}](${candidateUrisArray[0]})`;
     });
 
     const result = {
