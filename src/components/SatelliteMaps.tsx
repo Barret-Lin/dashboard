@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect } from 'react';
-import { MapContainer, TileLayer, Polygon, Marker, Popup } from 'react-leaflet';
+import { MapContainer, TileLayer, Polygon, Marker, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { RefreshCw, Map as MapIcon, Crosshair, AlertTriangle } from 'lucide-react';
@@ -52,6 +52,40 @@ const createTargetIcon = (type: string, heading: number) => {
   });
 };
 
+const FitBounds = ({ zones }: { zones: [number, number][][] }) => {
+  const map = useMap();
+  useEffect(() => {
+    if (zones.length > 0) {
+      const bounds = L.latLngBounds([]);
+      zones.forEach(zone => {
+        zone.forEach(coord => {
+          bounds.extend(coord);
+        });
+      });
+      if (bounds.isValid()) {
+        map.fitBounds(bounds, { padding: [20, 20] });
+      }
+    }
+  }, [zones, map]);
+  return null;
+};
+
+const FitTargetsBounds = ({ targets }: { targets: { lat: number, lng: number }[] }) => {
+  const map = useMap();
+  useEffect(() => {
+    if (targets.length > 0) {
+      const bounds = L.latLngBounds([]);
+      targets.forEach(target => {
+        bounds.extend([target.lat, target.lng]);
+      });
+      if (bounds.isValid()) {
+        map.fitBounds(bounds, { padding: [20, 20] });
+      }
+    }
+  }, [targets, map]);
+  return null;
+};
+
 export const SatelliteMaps: React.FC<{ apiKey?: string; isPaidApiKey?: boolean; refreshTrigger?: number }> = ({ apiKey, isPaidApiKey, refreshTrigger = 0 }) => {
   const [lastUpdated1, setLastUpdated1] = useState<Date>(new Date());
   const [lastUpdated2, setLastUpdated2] = useState<Date>(new Date());
@@ -70,8 +104,8 @@ export const SatelliteMaps: React.FC<{ apiKey?: string; isPaidApiKey?: boolean; 
       const data = await fetchMapData(apiKey, force, isPaidApiKey);
       if (data) {
         setMapData(data);
-        if (data.surveillance?.targets?.length > 0) {
-          setTargets(data.surveillance.targets);
+        if (data.surveillance) {
+          setTargets(data.surveillance.targets || []);
         }
         if (data.exerciseZones) {
           setExerciseZones(data.exerciseZones);
@@ -137,6 +171,7 @@ export const SatelliteMaps: React.FC<{ apiKey?: string; isPaidApiKey?: boolean; 
               url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
               maxZoom={18}
             />
+            <FitBounds zones={exerciseZones.length > 0 ? exerciseZones.map(z => z.coordinates) : EXERCISE_ZONES} />
             {exerciseZones.length > 0 ? exerciseZones.map((zone, idx) => (
               <Polygon 
                 key={idx} 
@@ -204,6 +239,7 @@ export const SatelliteMaps: React.FC<{ apiKey?: string; isPaidApiKey?: boolean; 
               url="https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}"
               maxZoom={16}
             />
+            <FitTargetsBounds targets={targets} />
             {targets.map(target => (
               <Marker 
                 key={target.id}
