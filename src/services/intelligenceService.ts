@@ -877,10 +877,11 @@ JSON 格式範例：
     const response = await executeWithLock(() => generateContentWithFallback(ai, prompt, {
       tools: [{ googleSearch: {} }],
       temperature: 0.1,
-      responseMimeType: 'application/json',
     }), isPaidKey);
 
-    const text = response.text || '{}';
+    let text = response.text || '{}';
+    // Remove markdown code blocks if present
+    text = text.replace(/^```json\s*/, '').replace(/\s*```$/, '').trim();
     let parsedData;
     try {
       parsedData = JSON.parse(text);
@@ -1028,10 +1029,11 @@ JSON 格式範例：
     const response = await executeWithLock(() => generateContentWithFallback(ai, prompt, {
       tools: [{ googleSearch: {} }],
       temperature: 0.1,
-      responseMimeType: 'application/json',
     }), isPaidKey);
 
-    const text = response.text || '[]';
+    let text = response.text || '[]';
+    // Remove markdown code blocks if present
+    text = text.replace(/^```json\s*/, '').replace(/\s*```$/, '').trim();
     const parsedData = JSON.parse(text);
     let eventsArray = Array.isArray(parsedData) ? parsedData : (parsedData.events || []);
     
@@ -1111,10 +1113,11 @@ JSON 格式範例與說明：
     const response = await executeWithLock(() => generateContentWithFallback(ai, prompt, {
       tools: [{ googleSearch: {} }],
       temperature: 0.1,
-      responseMimeType: 'application/json',
     }), isPaidKey);
 
-    const text = response.text || '{}';
+    let text = response.text || '{}';
+    // Remove markdown code blocks if present
+    text = text.replace(/^```json\s*/, '').replace(/\s*```$/, '').trim();
     const parsedData = JSON.parse(text);
     
     // Ensure targets have IDs and valid types
