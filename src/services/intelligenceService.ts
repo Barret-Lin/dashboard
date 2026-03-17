@@ -120,6 +120,112 @@ export async function executeWithLock<T>(task: () => Promise<T>, bypassQueue = f
   return apiRateManager.enqueue(task);
 }
 
+export type ModelVersion = 'gemini-3.1-pro-preview' | 'gemini-3-flash-preview' | 'gemini-2.5-flash';
+
+export interface ApiStatus {
+  currentModel: ModelVersion;
+  quotaStatus: 'NORMAL' | 'RATE_LIMIT' | 'DAILY_LIMIT' | 'INVALID' | 'ERROR';
+  lastErrorMsg?: string;
+  currentApiKey?: string;
+}
+
+let currentApiStatus: ApiStatus = {
+  currentModel: 'gemini-3.1-pro-preview',
+  quotaStatus: 'NORMAL'
+};
+
+const statusListeners: ((status: ApiStatus) => void)[] = [];
+
+export function subscribeToApiStatus(listener: (status: ApiStatus) => void) {
+  statusListeners.push(listener);
+  listener(currentApiStatus);
+  return () => {
+    const index = statusListeners.indexOf(listener);
+    if (index > -1) statusListeners.splice(index, 1);
+  };
+}
+
+export function updateApiStatus(updates: Partial<ApiStatus>) {
+  currentApiStatus = { ...currentApiStatus, ...updates };
+  statusListeners.forEach(l => l(currentApiStatus));
+}
+
+export function getApiStatus() {
+  return currentApiStatus;
+}
+
+export async function generateContentWithFallback(ai: GoogleGenAI, contents: any, config: any) {
+  const models: ModelVersion[] = ['gemini-3.1-pro-preview', 'gemini-3-flash-preview', 'gemini-2.5-flash'];
+  
+  let startIndex = models.indexOf(currentApiStatus.currentModel);
+  if (startIndex === -1) startIndex = 0;
+
+  let lastError: any = null;
+
+  for (let i = startIndex; i < models.length; i++) {
+    const model = models[i];
+    try {
+      if (currentApiStatus.currentModel !== model) {
+        updateApiStatus({ currentModel: model });
+      }
+      
+      // Clean up config to avoid empty tools
+      const cleanConfig = { ...config };
+      if (cleanConfig.tools && Array.isArray(cleanConfig.tools)) {
+        cleanConfig.tools = cleanConfig.tools.filter((t: any) => Object.keys(t).length > 0);
+        if (cleanConfig.tools.length === 0) {
+          delete cleanConfig.tools;
+        }
+      }
+      
+      const response = await ai.models.generateContent({
+        model,
+        contents,
+        config: cleanConfig
+      });
+      
+      updateApiStatus({ quotaStatus: 'NORMAL', lastErrorMsg: undefined });
+      return response;
+      
+    } catch (error: any) {
+      console.error(`Error with model ${model}:`, error);
+      lastError = error;
+      const errorMsg = error?.message || String(error);
+      
+      // Check if it's a quota error
+      const isQuotaError = errorMsg.includes('429') || 
+                           errorMsg.includes('quota') || 
+                           errorMsg.includes('rate limit') ||
+                           errorMsg.includes('exhausted');
+                           
+      const isInvalidKey = errorMsg.includes('403') || 
+                           errorMsg.includes('API_KEY_INVALID') || 
+                           errorMsg.includes('API key not valid');
+                           
+      if (isInvalidKey) {
+        updateApiStatus({ quotaStatus: 'INVALID', lastErrorMsg: errorMsg });
+        throw error; // Don't fallback for invalid key
+      }
+      
+      if (isQuotaError) {
+        if (i < models.length - 1) {
+          console.log(`Downgrading model from ${model} to ${models[i+1]}`);
+          continue; // Try next model
+        } else {
+          updateApiStatus({ quotaStatus: 'RATE_LIMIT', lastErrorMsg: errorMsg });
+          throw error; // All models failed
+        }
+      }
+      
+      // For 400 Bad Request or other errors, don't fallback, just throw
+      updateApiStatus({ quotaStatus: 'ERROR', lastErrorMsg: errorMsg });
+      throw error;
+    }
+  }
+  
+  throw lastError || new Error("All models failed");
+}
+
 export interface IntelligenceData {
   text: string;
   sources: { title: string; uri: string }[];
@@ -293,13 +399,9 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
 
   const ai = new GoogleGenAI({ apiKey: cleanApiKey });
   try {
-    const response = await executeWithLock(() => ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
-      contents: prompt,
-      config: {
-        tools: [{ googleSearch: {} }],
-        temperature: 0.1,
-      },
+    const response = await executeWithLock(() => generateContentWithFallback(ai, prompt, {
+      tools: [{ googleSearch: {} }],
+      temperature: 0.1,
     }), isPaidKey);
 
     const text = response.text || '';
@@ -679,16 +781,17 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
   } catch (error: any) {
     lastError = error;
 
-    const isRateLimited = error?.message?.includes('429') || error?.status === 429;
-    const isDailyLimit = error?.message?.includes('quota') || error?.message?.includes('Resource has been exhausted');
-    const isInvalidKey = error?.message?.includes('API key not valid') || error?.message?.includes('API_KEY_INVALID') || error?.status === 400;
+    const errorMsg = error?.message || String(error);
+    const isRateLimited = errorMsg.includes('429') || error?.status === 429;
+    const isDailyLimit = errorMsg.includes('quota') || errorMsg.includes('Resource has been exhausted');
+    const isInvalidKey = errorMsg.includes('403') || errorMsg.includes('API key not valid') || errorMsg.includes('API_KEY_INVALID');
     
     if (!isRateLimited && !isDailyLimit && !isInvalidKey) {
       console.error("Error fetching intelligence:", error);
     }
     
     return {
-      text: `⚠️ **無法取得資料**\n\n${isDailyLimit ? '已達每日 API 請求上限，請於太平洋時間午夜後重試。' : isRateLimited ? '已達每分鐘 API 請求上限，請稍後再試。' : isInvalidKey ? 'API 金鑰無效，請檢查您的設定。' : '發生未知錯誤，請稍後再試。'}`,
+      text: `⚠️ **無法取得資料**\n\n${isDailyLimit ? '已達每日 API 請求上限，請於太平洋時間午夜後重試。' : isRateLimited ? '已達每分鐘 API 請求上限，請稍後再試。' : isInvalidKey ? 'API 金鑰無效，請檢查您的設定。' : `發生錯誤：${errorMsg}`}`,
       sources: [],
       isRateLimited: isRateLimited || isDailyLimit,
       isDailyLimit,
@@ -771,14 +874,10 @@ JSON 格式範例：
 
   const ai = new GoogleGenAI({ apiKey: cleanApiKey });
   try {
-    const response = await executeWithLock(() => ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
-      contents: prompt,
-      config: {
-        tools: [{ googleSearch: {} }],
-        temperature: 0.1,
-        responseMimeType: 'application/json',
-      },
+    const response = await executeWithLock(() => generateContentWithFallback(ai, prompt, {
+      tools: [{ googleSearch: {} }],
+      temperature: 0.1,
+      responseMimeType: 'application/json',
     }), isPaidKey);
 
     const text = response.text || '{}';
@@ -834,9 +933,10 @@ JSON 格式範例：
     return result;
   } catch (error: any) {
     lastError = error;
-    const isRateLimited = error?.message?.includes('429') || error?.status === 429;
-    const isDailyLimit = error?.message?.includes('quota') || error?.message?.includes('Resource has been exhausted');
-    const isInvalidKey = error?.message?.includes('API key not valid') || error?.message?.includes('API_KEY_INVALID') || error?.status === 400;
+    const errorMsg = error?.message || String(error);
+    const isRateLimited = errorMsg.includes('429') || error?.status === 429;
+    const isDailyLimit = errorMsg.includes('quota') || errorMsg.includes('Resource has been exhausted');
+    const isInvalidKey = errorMsg.includes('403') || errorMsg.includes('API key not valid') || errorMsg.includes('API_KEY_INVALID');
     
     if (!isRateLimited && !isDailyLimit && !isInvalidKey) {
       console.error("Error fetching threat level:", error);
@@ -845,7 +945,7 @@ JSON 格式範例：
     return {
       level: 'UNKNOWN' as any,
       totalScore: 0,
-      summary: isDailyLimit ? '已達每日 API 請求上限' : isRateLimited ? '已達每分鐘 API 請求上限' : isInvalidKey ? 'API 金鑰無效' : '發生未知錯誤',
+      summary: isDailyLimit ? '已達每日 API 請求上限' : isRateLimited ? '已達每分鐘 API 請求上限' : isInvalidKey ? 'API 金鑰無效' : `發生錯誤：${errorMsg}`,
       sources: [],
       scores: { military: 0, economic: 0, diplomatic: 0, cognitive: 0 },
       isRateLimited: isRateLimited || isDailyLimit,
@@ -925,14 +1025,10 @@ JSON 格式範例：
 
   const ai = new GoogleGenAI({ apiKey: cleanApiKey });
   try {
-    const response = await executeWithLock(() => ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
-      contents: prompt,
-      config: {
-        tools: [{ googleSearch: {} }],
-        temperature: 0.1,
-        responseMimeType: 'application/json',
-      },
+    const response = await executeWithLock(() => generateContentWithFallback(ai, prompt, {
+      tools: [{ googleSearch: {} }],
+      temperature: 0.1,
+      responseMimeType: 'application/json',
     }), isPaidKey);
 
     const text = response.text || '[]';
@@ -1012,14 +1108,10 @@ JSON 格式範例與說明：
 
   const ai = new GoogleGenAI({ apiKey: cleanApiKey });
   try {
-    const response = await executeWithLock(() => ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
-      contents: prompt,
-      config: {
-        tools: [{ googleSearch: {} }],
-        temperature: 0.1,
-        responseMimeType: 'application/json',
-      },
+    const response = await executeWithLock(() => generateContentWithFallback(ai, prompt, {
+      tools: [{ googleSearch: {} }],
+      temperature: 0.1,
+      responseMimeType: 'application/json',
     }), isPaidKey);
 
     const text = response.text || '{}';

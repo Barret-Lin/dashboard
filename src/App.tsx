@@ -8,7 +8,7 @@ import { Crosshair, TrendingDown, Globe, RefreshCw, AlertTriangle, ExternalLink,
 import Markdown from 'react-markdown';
 import { motion, AnimatePresence } from 'motion/react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
-import { fetchIntelligence, fetchOverallThreatLevel, IntelligenceData, ThreatLevelData, apiRateManager, clearDataCache } from './services/intelligenceService';
+import { fetchIntelligence, fetchOverallThreatLevel, IntelligenceData, ThreatLevelData, apiRateManager, clearDataCache, subscribeToApiStatus, ApiStatus } from './services/intelligenceService';
 import { SatelliteMaps } from './components/SatelliteMaps';
 import { TimelineView } from './components/TimelineView';
 
@@ -235,6 +235,12 @@ export default function App() {
   const [showPassword, setShowPassword] = useState(false);
   const [apiKeyModalReason, setApiKeyModalReason] = useState<'RATE_LIMIT' | 'DAILY_LIMIT' | 'MANUAL' | 'INVALID' | 'MISSING'>('MISSING');
   const [apiCallCount, setApiCallCount] = useState(0);
+  const [apiStatus, setApiStatus] = useState<ApiStatus | null>(null);
+
+  useEffect(() => {
+    const unsubscribe = subscribeToApiStatus(setApiStatus);
+    return unsubscribe;
+  }, []);
 
   useEffect(() => {
     const unsubscribe = apiRateManager.subscribe((count) => {
@@ -255,6 +261,15 @@ export default function App() {
     } catch (e) {
       // ignore
     }
+    
+    // Reset API status when key changes
+    import('./services/intelligenceService').then(({ updateApiStatus }) => {
+      updateApiStatus({
+        currentModel: 'gemini-3.1-pro-preview',
+        quotaStatus: 'NORMAL',
+        lastErrorMsg: undefined
+      });
+    });
   }, [customApiKey, isPaidApiKey]);
 
   const loadThreatLevel = async (keyOverride?: string, force = false, isPaidOverride?: boolean) => {
@@ -380,6 +395,33 @@ export default function App() {
     <div className="min-h-screen bg-[#050505] text-zinc-300 font-sans selection:bg-red-500/30 p-4 md:p-8 scanline-bg flex flex-col">
       <div className="max-w-7xl mx-auto w-full space-y-6 relative z-10 flex-1 flex flex-col">
         
+        {/* Top Info Bar */}
+        <div className="flex flex-wrap items-center justify-between gap-4 bg-zinc-900/50 border border-zinc-800 rounded-lg px-4 py-2 text-[10px] md:text-xs font-mono text-zinc-400">
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2">
+              <span className="text-zinc-500">目前運行模型：</span>
+              <span className="text-emerald-400">{apiStatus?.currentModel || 'gemini-3.1-pro-preview'}</span>
+            </div>
+            <div className="w-px h-3 bg-zinc-700"></div>
+            <div className="flex items-center gap-2">
+              <span className="text-zinc-500">API Key 狀態：</span>
+              <span className={`${apiStatus?.quotaStatus === 'NORMAL' ? 'text-emerald-400' : apiStatus?.quotaStatus === 'INVALID' ? 'text-red-400' : 'text-yellow-400'}`}>
+                {apiStatus?.quotaStatus === 'NORMAL' ? '正常 (NORMAL)' : 
+                 apiStatus?.quotaStatus === 'RATE_LIMIT' ? '頻率限制 (RATE_LIMIT)' : 
+                 apiStatus?.quotaStatus === 'DAILY_LIMIT' ? '額度耗盡 (DAILY_LIMIT)' : 
+                 apiStatus?.quotaStatus === 'INVALID' ? '無效金鑰 (INVALID)' : 
+                 apiStatus?.quotaStatus === 'ERROR' ? '發生錯誤 (ERROR)' : '未知狀態'}
+              </span>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-zinc-500">當前使用金鑰：</span>
+            <span className="text-zinc-300">
+              {customApiKey ? `${customApiKey.substring(0, 4)}...${customApiKey.substring(customApiKey.length - 4)}` : '系統預設金鑰'}
+            </span>
+          </div>
+        </div>
+
         {/* Header */}
         <header className="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b-2 border-dashed border-zinc-800 pb-6">
           <div>
