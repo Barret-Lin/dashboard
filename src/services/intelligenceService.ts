@@ -1062,6 +1062,7 @@ JSON 格式範例：
     
     const groundingMetadata = response.candidates?.[0]?.groundingMetadata;
     const groundingChunks = groundingMetadata?.groundingChunks || [];
+    const groundingSupports = groundingMetadata?.groundingSupports || [];
     
     const availableChunks = groundingChunks.map((c: any, index: number) => ({
       index,
@@ -1104,6 +1105,8 @@ JSON 格式範例：
       '中國軍網': '81.cn', '中國海事局': 'msa.gov.cn'
     };
 
+    const rawText = response.text || '';
+
     eventsArray = eventsArray.map((event: any) => {
       // Clean up markdown links in title if AI generated them
       if (event.title) {
@@ -1116,34 +1119,108 @@ JSON 格式範例：
       
       let matchedChunk = null;
       
-      // 1. Match by AI provided URL
+      // 0. Find local chunks using groundingSupports based on title/description offset
+      const localChunkIndices = new Set<number>();
+      if (rawText) {
+        let titleStart = event.title ? rawText.indexOf(event.title) : -1;
+        if (titleStart === -1 && event.title && event.title.length > 10) {
+          titleStart = rawText.indexOf(event.title.substring(0, 10));
+        }
+        const titleEnd = titleStart !== -1 ? titleStart + (event.title?.length || 0) : -1;
+
+        let descStart = event.description ? rawText.indexOf(event.description) : -1;
+        if (descStart === -1 && event.description && event.description.length > 15) {
+          descStart = rawText.indexOf(event.description.substring(0, 15));
+        }
+        const descEnd = descStart !== -1 ? descStart + (event.description?.length || 0) : -1;
+
+        groundingSupports.forEach((support: any) => {
+          const sStart = support.segment?.startIndex || 0;
+          const sEnd = support.segment?.endIndex || 0;
+          
+          const overlapsTitle = titleStart !== -1 && (
+            (sStart <= titleEnd && sEnd >= titleStart) || 
+            (Math.abs(sStart - titleEnd) <= 200) || 
+            (Math.abs(titleStart - sEnd) <= 200)
+          );
+
+          const overlapsDesc = descStart !== -1 && (
+            (sStart <= descEnd && sEnd >= descStart) || 
+            (Math.abs(sStart - descEnd) <= 200) || 
+            (Math.abs(descStart - sEnd) <= 200)
+          );
+
+          if (overlapsTitle || overlapsDesc) {
+            const indices = support.groundingChunkIndices || [];
+            indices.forEach((i: number) => localChunkIndices.add(i));
+          }
+        });
+      }
+
+      const candidateIndices = Array.from(localChunkIndices);
+      const candidateChunks = candidateIndices.map(i => availableChunks.find(c => c.index === i)).filter(Boolean) as any[];
+
+      const cleanUrlNorm = event.url ? normalizeUrl(event.url) : '';
+      let aiDomain = '';
       if (event.url) {
-        const cleanUrlNorm = normalizeUrl(event.url);
+        try { aiDomain = new URL(event.url).hostname.replace(/^www\./, '').toLowerCase(); } catch(e) {}
+      }
+
+      // 1. Match by AI provided URL exactly
+      if (cleanUrlNorm) {
         matchedChunk = availableChunks.find((c: any) => normalizeUrl(c.uri) === cleanUrlNorm);
       }
       
-      // 2. Match by publisher domain
-      if (!matchedChunk && event.publisher) {
-        const pubLower = event.publisher.toLowerCase();
-        for (const [key, domain] of Object.entries(aliases)) {
-          if (pubLower.includes(key)) {
-            matchedChunk = availableChunks.find((c: any) => c.domain.includes(domain) && !usedUris.has(c.uri)) || availableChunks.find((c: any) => c.domain.includes(domain));
-            if (matchedChunk) break;
+      // 2. Match from Local Chunks
+      if (!matchedChunk && candidateChunks.length > 0) {
+        if (event.publisher) {
+          const pubLower = event.publisher.toLowerCase();
+          for (const [key, domain] of Object.entries(aliases)) {
+            if (pubLower.includes(key)) {
+              matchedChunk = candidateChunks.find((c: any) => c.domain.includes(domain) && !usedUris.has(c.uri)) || candidateChunks.find((c: any) => c.domain.includes(domain));
+              if (matchedChunk) break;
+            }
+          }
+          if (!matchedChunk && event.publisher.length > 1) {
+            matchedChunk = candidateChunks.find((c: any) => c.title.includes(event.publisher) && !usedUris.has(c.uri)) || candidateChunks.find((c: any) => c.title.includes(event.publisher));
           }
         }
-        if (!matchedChunk && event.publisher.length > 1) {
-          matchedChunk = availableChunks.find((c: any) => c.title.includes(event.publisher) && !usedUris.has(c.uri)) || availableChunks.find((c: any) => c.title.includes(event.publisher));
+        if (!matchedChunk && aiDomain) {
+          matchedChunk = candidateChunks.find((c: any) => (c.domain.includes(aiDomain) || aiDomain.includes(c.domain)) && !usedUris.has(c.uri)) || candidateChunks.find((c: any) => c.domain.includes(aiDomain) || aiDomain.includes(c.domain));
+        }
+        // Fallback to any local chunk (since it's grounded to this specific text)
+        if (!matchedChunk) {
+          matchedChunk = candidateChunks.find((c: any) => !usedUris.has(c.uri)) || candidateChunks[0];
         }
       }
-      
-      // 3. Fallback to any unused chunk
-      if (!matchedChunk && availableChunks.length > 0) {
-        matchedChunk = availableChunks.find((c: any) => !usedUris.has(c.uri)) || availableChunks[0];
+
+      // 3. Fallback to Global Chunks by publisher
+      if (!matchedChunk) {
+        if (event.publisher) {
+          const pubLower = event.publisher.toLowerCase();
+          for (const [key, domain] of Object.entries(aliases)) {
+            if (pubLower.includes(key)) {
+              matchedChunk = availableChunks.find((c: any) => c.domain.includes(domain) && !usedUris.has(c.uri)) || availableChunks.find((c: any) => c.domain.includes(domain));
+              if (matchedChunk) break;
+            }
+          }
+          if (!matchedChunk && event.publisher.length > 1) {
+            matchedChunk = availableChunks.find((c: any) => c.title.includes(event.publisher) && !usedUris.has(c.uri)) || availableChunks.find((c: any) => c.title.includes(event.publisher));
+          }
+        }
+        if (!matchedChunk && aiDomain) {
+          matchedChunk = availableChunks.find((c: any) => (c.domain.includes(aiDomain) || aiDomain.includes(c.domain)) && !usedUris.has(c.uri)) || availableChunks.find((c: any) => c.domain.includes(aiDomain) || aiDomain.includes(c.domain));
+        }
       }
       
       if (matchedChunk) {
         event.url = matchedChunk.uri;
         usedUris.add(matchedChunk.uri);
+      } else if (event.url) {
+        // Keep AI generated URL if it looks like a valid URL, otherwise clear it
+        if (!event.url.startsWith('http')) {
+          event.url = undefined;
+        }
       }
       
       return event;
