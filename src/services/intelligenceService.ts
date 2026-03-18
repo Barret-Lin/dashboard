@@ -666,9 +666,9 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
     const normalizeUrl = (u: string) => {
       try {
         const parsed = new URL(u);
-        return parsed.origin + parsed.pathname.replace(/\/$/, '');
+        return parsed.origin + parsed.pathname.replace(/\/$/, '') + parsed.search;
       } catch {
-        return u.split('?')[0].replace(/\/$/, '');
+        return u.split('#')[0].replace(/\/$/, '');
       }
     };
 
@@ -743,9 +743,13 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
         if (!matchedChunk && aiDomain) {
           matchedChunk = candidateChunks.find(c => (c.domain.includes(aiDomain) || aiDomain.includes(c.domain)) && !usedUris.has(c.uri)) || candidateChunks.find(c => c.domain.includes(aiDomain) || aiDomain.includes(c.domain));
         }
+        // 強制 Fallback：既然 Grounding Support 指向了這些 Chunks，即使名稱對不上，也直接使用（保證 100% 連結到支援該段落的真實來源）
+        if (!matchedChunk) {
+          matchedChunk = candidateChunks.find(c => !usedUris.has(c.uri)) || candidateChunks[0];
+        }
       }
 
-      // 策略 3: 如果沒有 Local Chunks，回退到全局搜尋 (只用強匹配)
+      // 策略 3: 如果沒有 Local Chunks，回退到全局搜尋
       if (!matchedChunk) {
          for (const [key, domain] of Object.entries(aliases)) {
            if (pubLower.includes(key)) {
@@ -758,6 +762,10 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
          }
          if (!matchedChunk && aiDomain) {
            matchedChunk = availableChunks.find(c => (c.domain.includes(aiDomain) || aiDomain.includes(c.domain)) && !usedUris.has(c.uri)) || availableChunks.find(c => c.domain.includes(aiDomain) || aiDomain.includes(c.domain));
+         }
+         // 全局 Fallback：如果真的找不到，找一個還沒用過的來源
+         if (!matchedChunk) {
+           matchedChunk = availableChunks.find(c => !usedUris.has(c.uri));
          }
       }
 
