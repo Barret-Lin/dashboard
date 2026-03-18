@@ -265,7 +265,7 @@ export default function App() {
     // Reset API status when key changes
     import('./services/intelligenceService').then(({ updateApiStatus }) => {
       updateApiStatus({
-        currentModel: 'gemini-3-flash-preview',
+        currentModel: 'gemini-3.1-pro-preview',
         quotaStatus: 'NORMAL',
         lastErrorMsg: undefined
       });
@@ -400,7 +400,7 @@ export default function App() {
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2">
               <span className="text-zinc-500">目前運行模型：</span>
-              <span className="text-emerald-400">{apiStatus?.currentModel || 'gemini-3-flash-preview'}</span>
+              <span className="text-emerald-400">{apiStatus?.currentModel || 'gemini-3.1-pro-preview'}</span>
             </div>
             <div className="w-px h-3 bg-zinc-700"></div>
             <div className="flex items-center gap-2">

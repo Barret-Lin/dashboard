@@ -4,7 +4,7 @@ class ApiRateManager {
   private queue: (() => Promise<void>)[] = [];
   private isProcessing = false;
   private lastRequestTime = 0;
-  private readonly minDelayMs = 500; // 0.5 seconds delay for faster refresh
+  private readonly minDelayMs = 2000; // 2 seconds delay
   private callCount = 0;
   private lastResetTime = Date.now();
   private subscribers: ((count: number) => void)[] = [];
@@ -120,7 +120,7 @@ export async function executeWithLock<T>(task: () => Promise<T>, bypassQueue = f
   return apiRateManager.enqueue(task);
 }
 
-export type ModelVersion = 'gemini-3-flash-preview' | 'gemini-3.1-pro-preview' | 'gemini-2.5-flash';
+export type ModelVersion = 'gemini-3.1-pro-preview' | 'gemini-3-flash-preview' | 'gemini-2.5-flash';
 
 export interface ApiStatus {
   currentModel: ModelVersion;
@@ -130,7 +130,7 @@ export interface ApiStatus {
 }
 
 let currentApiStatus: ApiStatus = {
-  currentModel: 'gemini-3-flash-preview',
+  currentModel: 'gemini-3.1-pro-preview',
   quotaStatus: 'NORMAL'
 };
 
@@ -155,7 +155,7 @@ export function getApiStatus() {
 }
 
 export async function generateContentWithFallback(ai: GoogleGenAI, contents: any, config: any) {
-  const models: ModelVersion[] = ['gemini-3-flash-preview', 'gemini-3.1-pro-preview', 'gemini-2.5-flash'];
+  const models: ModelVersion[] = ['gemini-3.1-pro-preview', 'gemini-3-flash-preview', 'gemini-2.5-flash'];
   
   let startIndex = models.indexOf(currentApiStatus.currentModel);
   if (startIndex === -1) startIndex = 0;
@@ -1032,7 +1032,7 @@ export async function fetchTimelineEvents(customApiKey?: string, forceRefresh = 
 2. 請嚴格回傳 JSON 格式，不要包含 Markdown 語法或額外文字。
 3. 請確保事件按時間先後順序排列（最舊的在前面，最新的在後面）。
 4. 每個事件必須評估其影響力等級 (impactLevel)，範圍為 1 到 10 的整數（10 為最高威脅/影響）。
-5. 每個事件必須提供真實的來源網址 (url) 與媒體名稱 (publisher)，請從搜尋結果中提取最相關的網址。
+5. 取消超連結，保留純文字描述即可。
 
 JSON 格式範例：
 [
@@ -1041,9 +1041,7 @@ JSON 格式範例：
     "title": "國防部偵獲多架次共機越過海峽中線",
     "description": "國防部今日表示，自上午起陸續偵獲多架次共機出海活動，其中部分逾越海峽中線及其延伸線...",
     "category": "military",
-    "impactLevel": 8,
-    "url": "https://www.cna.com.tw/news/aipl/202603080001.aspx",
-    "publisher": "中央社"
+    "impactLevel": 8
   }
 ]`;
 
@@ -1060,169 +1058,15 @@ JSON 格式範例：
     const parsedData = JSON.parse(text);
     let eventsArray = Array.isArray(parsedData) ? parsedData : (parsedData.events || []);
     
-    const groundingMetadata = response.candidates?.[0]?.groundingMetadata;
-    const groundingChunks = groundingMetadata?.groundingChunks || [];
-    const groundingSupports = groundingMetadata?.groundingSupports || [];
-    
-    const availableChunks = groundingChunks.map((c: any, index: number) => ({
-      index,
-      title: c.web?.title || '',
-      uri: c.web?.uri || '',
-      domain: c.web?.uri ? (() => { try { return new URL(c.web.uri).hostname; } catch(e) { return ''; } })() : ''
-    })).filter((c: any) => c.uri);
-
-    const usedUris = new Set<string>();
-    
-    const normalizeUrl = (u: string) => {
-      try {
-        const parsed = new URL(u);
-        return parsed.origin + parsed.pathname.replace(/\/$/, '') + parsed.search;
-      } catch {
-        return u.split('#')[0].replace(/\/$/, '');
-      }
-    };
-
-    const aliases: Record<string, string> = {
-      '中央社': 'cna.com.tw', 'cna': 'cna.com.tw', '自由時報': 'ltn.com.tw', 'ltn': 'ltn.com.tw',
-      '聯合報': 'udn.com', 'udn': 'udn.com', '中時': 'chinatimes.com', 'chinatimes': 'chinatimes.com',
-      '蘋果': 'appledaily.com', 'ettoday': 'ettoday.net', '東森': 'ettoday.net', 'tvbs': 'tvbs.com.tw',
-      '三立': 'setn.com', 'setn': 'setn.com', '民視': 'ftvnews.com.tw', 'ftv': 'ftvnews.com.tw',
-      '華視': 'cts.com.tw', '台視': 'ttv.com.tw', '公視': 'pts.org.tw', 'yahoo': 'yahoo.com',
-      'google': 'google.com', '大紀元': 'epochtimes.com', '新頭殼': 'newtalk.tw', 'newtalk': 'newtalk.tw',
-      '太報': 'taisounds.com', 'taisounds': 'taisounds.com', '風傳媒': 'storm.mg', 'storm': 'storm.mg',
-      '關鍵評論': 'thenewslens.com', 'thenewslens': 'thenewslens.com', '端傳媒': 'theinitium.com',
-      'initium': 'theinitium.com', '報導者': 'twreporter.org', 'twreporter': 'twreporter.org',
-      'bbc': 'bbc.com', 'cnn': 'cnn.com', '路透': 'reuters.com', 'reuters': 'reuters.com',
-      '彭博': 'bloomberg.com', 'bloomberg': 'bloomberg.com', '法新社': 'afp.com', 'afp': 'afp.com',
-      '美聯社': 'apnews.com', 'ap': 'apnews.com', '共同社': 'kyodonews.net', 'kyodo': 'kyodonews.net',
-      '日經': 'nikkei.com', 'nikkei': 'nikkei.com', '讀賣': 'yomiuri.co.jp', 'yomiuri': 'yomiuri.co.jp',
-      '朝日': 'asahi.com', 'asahi': 'asahi.com', '產經': 'sankei.com', 'sankei': 'sankei.com',
-      '紐約時報': 'nytimes.com', 'nytimes': 'nytimes.com', '華爾街日報': 'wsj.com', 'wsj': 'wsj.com',
-      '華盛頓郵報': 'washingtonpost.com', 'washingtonpost': 'washingtonpost.com', '金融時報': 'ft.com',
-      'ft': 'ft.com', '防衛省': 'mod.go.jp', '國防部': 'mnd.gov.tw', '海巡署': 'cga.gov.tw',
-      '外交部': 'mofa.gov.tw', '陸委會': 'mac.gov.tw', '國台辦': 'gwytb.gov.cn', '新華社': 'xinhuanet.com',
-      '人民日報': 'people.com.cn', '央視': 'cctv.com', '環球時報': 'huanqiu.com', '解放軍報': '81.cn',
-      '中國軍網': '81.cn', '中國海事局': 'msa.gov.cn'
-    };
-
-    const rawText = response.text || '';
-
-    eventsArray = eventsArray.map((event: any) => {
+    eventsArray = eventsArray.map((event: TimelineEvent) => {
       // Clean up markdown links in title if AI generated them
       if (event.title) {
         const mdLinkMatch = event.title.match(/\[([^\]]+)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/);
         if (mdLinkMatch) {
           event.title = mdLinkMatch[1];
-          if (!event.url) event.url = mdLinkMatch[2];
         }
       }
-      
-      let matchedChunk = null;
-      
-      // 0. Find local chunks using groundingSupports based on title/description offset
-      const localChunkIndices = new Set<number>();
-      if (rawText) {
-        let titleStart = event.title ? rawText.indexOf(event.title) : -1;
-        if (titleStart === -1 && event.title && event.title.length > 10) {
-          titleStart = rawText.indexOf(event.title.substring(0, 10));
-        }
-        const titleEnd = titleStart !== -1 ? titleStart + (event.title?.length || 0) : -1;
-
-        let descStart = event.description ? rawText.indexOf(event.description) : -1;
-        if (descStart === -1 && event.description && event.description.length > 15) {
-          descStart = rawText.indexOf(event.description.substring(0, 15));
-        }
-        const descEnd = descStart !== -1 ? descStart + (event.description?.length || 0) : -1;
-
-        groundingSupports.forEach((support: any) => {
-          const sStart = support.segment?.startIndex || 0;
-          const sEnd = support.segment?.endIndex || 0;
-          
-          const overlapsTitle = titleStart !== -1 && (
-            (sStart <= titleEnd && sEnd >= titleStart) || 
-            (Math.abs(sStart - titleEnd) <= 200) || 
-            (Math.abs(titleStart - sEnd) <= 200)
-          );
-
-          const overlapsDesc = descStart !== -1 && (
-            (sStart <= descEnd && sEnd >= descStart) || 
-            (Math.abs(sStart - descEnd) <= 200) || 
-            (Math.abs(descStart - sEnd) <= 200)
-          );
-
-          if (overlapsTitle || overlapsDesc) {
-            const indices = support.groundingChunkIndices || [];
-            indices.forEach((i: number) => localChunkIndices.add(i));
-          }
-        });
-      }
-
-      const candidateIndices = Array.from(localChunkIndices);
-      const candidateChunks = candidateIndices.map(i => availableChunks.find(c => c.index === i)).filter(Boolean) as any[];
-
-      const cleanUrlNorm = event.url ? normalizeUrl(event.url) : '';
-      let aiDomain = '';
-      if (event.url) {
-        try { aiDomain = new URL(event.url).hostname.replace(/^www\./, '').toLowerCase(); } catch(e) {}
-      }
-
-      // 1. Match by AI provided URL exactly
-      if (cleanUrlNorm) {
-        matchedChunk = availableChunks.find((c: any) => normalizeUrl(c.uri) === cleanUrlNorm);
-      }
-      
-      // 2. Match from Local Chunks
-      if (!matchedChunk && candidateChunks.length > 0) {
-        if (event.publisher) {
-          const pubLower = event.publisher.toLowerCase();
-          for (const [key, domain] of Object.entries(aliases)) {
-            if (pubLower.includes(key)) {
-              matchedChunk = candidateChunks.find((c: any) => c.domain.includes(domain) && !usedUris.has(c.uri)) || candidateChunks.find((c: any) => c.domain.includes(domain));
-              if (matchedChunk) break;
-            }
-          }
-          if (!matchedChunk && event.publisher.length > 1) {
-            matchedChunk = candidateChunks.find((c: any) => c.title.includes(event.publisher) && !usedUris.has(c.uri)) || candidateChunks.find((c: any) => c.title.includes(event.publisher));
-          }
-        }
-        if (!matchedChunk && aiDomain) {
-          matchedChunk = candidateChunks.find((c: any) => (c.domain.includes(aiDomain) || aiDomain.includes(c.domain)) && !usedUris.has(c.uri)) || candidateChunks.find((c: any) => c.domain.includes(aiDomain) || aiDomain.includes(c.domain));
-        }
-        // Fallback to any local chunk (since it's grounded to this specific text)
-        if (!matchedChunk) {
-          matchedChunk = candidateChunks.find((c: any) => !usedUris.has(c.uri)) || candidateChunks[0];
-        }
-      }
-
-      // 3. Fallback to Global Chunks by publisher
-      if (!matchedChunk) {
-        if (event.publisher) {
-          const pubLower = event.publisher.toLowerCase();
-          for (const [key, domain] of Object.entries(aliases)) {
-            if (pubLower.includes(key)) {
-              matchedChunk = availableChunks.find((c: any) => c.domain.includes(domain) && !usedUris.has(c.uri)) || availableChunks.find((c: any) => c.domain.includes(domain));
-              if (matchedChunk) break;
-            }
-          }
-          if (!matchedChunk && event.publisher.length > 1) {
-            matchedChunk = availableChunks.find((c: any) => c.title.includes(event.publisher) && !usedUris.has(c.uri)) || availableChunks.find((c: any) => c.title.includes(event.publisher));
-          }
-        }
-        if (!matchedChunk && aiDomain) {
-          matchedChunk = availableChunks.find((c: any) => (c.domain.includes(aiDomain) || aiDomain.includes(c.domain)) && !usedUris.has(c.uri)) || availableChunks.find((c: any) => c.domain.includes(aiDomain) || aiDomain.includes(c.domain));
-        }
-      }
-      
-      if (matchedChunk) {
-        event.url = matchedChunk.uri;
-        usedUris.add(matchedChunk.uri);
-      } else if (event.url) {
-        // Keep AI generated URL if it looks like a valid URL, otherwise clear it
-        if (!event.url.startsWith('http')) {
-          event.url = undefined;
-        }
-      }
-      
+      event.url = undefined;
       return event;
     });
 
