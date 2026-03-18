@@ -772,18 +772,22 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
          if (!matchedChunk && aiDomain) {
            matchedChunk = availableChunks.find(c => (c.domain.includes(aiDomain) || aiDomain.includes(c.domain)) && !usedUris.has(c.uri)) || availableChunks.find(c => c.domain.includes(aiDomain) || aiDomain.includes(c.domain));
          }
-         // 全局 Fallback：如果真的找不到，找一個還沒用過的來源
-         if (!matchedChunk) {
-           matchedChunk = availableChunks.find(c => !usedUris.has(c.uri));
+         // 全局 Fallback：如果真的找不到，找一個還沒用過的來源，如果都用過了就隨便找一個
+         if (!matchedChunk && availableChunks.length > 0) {
+           matchedChunk = availableChunks.find(c => !usedUris.has(c.uri)) || availableChunks[0];
          }
       }
 
-      // 嚴格把關：如果找不到任何匹配的真實來源，絕對不產生超連結
+      // 嚴格把關：如果有匹配的真實來源，使用真實來源
       if (matchedChunk) {
         matchedUri = matchedChunk.uri;
         usedUris.add(matchedUri);
         return `${prefix}[${actualLinkText}](${matchedUri})`;
+      } else if (url) {
+        // 如果沒有真實來源（例如 AI 沒用搜尋），但 AI 有提供網址，則保留 AI 的網址
+        return `${prefix}[${actualLinkText}](${url})`;
       } else {
+        // 如果連 AI 都沒提供網址，只能返回純文字
         return `${prefix}${actualLinkText}`;
       }
     });
