@@ -4,7 +4,7 @@ class ApiRateManager {
   private queue: (() => Promise<void>)[] = [];
   private isProcessing = false;
   private lastRequestTime = 0;
-  private readonly minDelayMs = 2000; // 2 seconds delay
+  private readonly minDelayMs = 500; // 0.5 seconds delay for faster refresh
   private callCount = 0;
   private lastResetTime = Date.now();
   private subscribers: ((count: number) => void)[] = [];
@@ -120,7 +120,7 @@ export async function executeWithLock<T>(task: () => Promise<T>, bypassQueue = f
   return apiRateManager.enqueue(task);
 }
 
-export type ModelVersion = 'gemini-3.1-pro-preview' | 'gemini-3-flash-preview' | 'gemini-2.5-flash';
+export type ModelVersion = 'gemini-3-flash-preview' | 'gemini-3.1-pro-preview' | 'gemini-2.5-flash';
 
 export interface ApiStatus {
   currentModel: ModelVersion;
@@ -130,7 +130,7 @@ export interface ApiStatus {
 }
 
 let currentApiStatus: ApiStatus = {
-  currentModel: 'gemini-3.1-pro-preview',
+  currentModel: 'gemini-3-flash-preview',
   quotaStatus: 'NORMAL'
 };
 
@@ -155,7 +155,7 @@ export function getApiStatus() {
 }
 
 export async function generateContentWithFallback(ai: GoogleGenAI, contents: any, config: any) {
-  const models: ModelVersion[] = ['gemini-3.1-pro-preview', 'gemini-3-flash-preview', 'gemini-2.5-flash'];
+  const models: ModelVersion[] = ['gemini-3-flash-preview', 'gemini-3.1-pro-preview', 'gemini-2.5-flash'];
   
   let startIndex = models.indexOf(currentApiStatus.currentModel);
   if (startIndex === -1) startIndex = 0;
