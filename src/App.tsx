@@ -6,6 +6,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Crosshair, TrendingDown, Globe, RefreshCw, AlertTriangle, ExternalLink, Radar, Clock, Flame, Key, Lock, Unlock, Copy, Check, Activity, Eye, EyeOff, ChevronDown, ChevronUp, Settings } from 'lucide-react';
 import Markdown from 'react-markdown';
+import { Helmet } from 'react-helmet-async';
 import { motion, AnimatePresence } from 'motion/react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
 import { fetchIntelligence, fetchOverallThreatLevel, IntelligenceData, ThreatLevelData, apiRateManager, clearDataCache, subscribeToApiStatus, ApiStatus } from './services/intelligenceService';
@@ -391,9 +392,21 @@ export default function App() {
   const activeData = intelligence[activeTab];
   const isLoading = loading[activeTab];
 
+  const activeCategory = CATEGORIES.find(c => c.id === activeTab);
+  const pageTitle = activeCategory ? `${activeCategory.name} - 台海開源情報儀表板 (OSINT)` : '台海開源情報儀表板 (OSINT) | 即時軍事動態與威脅分析';
+  const pageDescription = activeCategory ? `即時追蹤與分析：${activeCategory.query}。台海開源情報儀表板提供最新軍事、經濟、外交與認知作戰動態。` : '台海開源情報儀表板 (OSINT) 提供即時軍事動態、經濟封鎖、外交打壓與認知作戰的開源情報分析。即時追蹤解放軍動態與台海局勢。';
+
   return (
     <div className="min-h-screen bg-[#050505] text-zinc-300 font-sans selection:bg-red-500/30 p-4 md:p-8 scanline-bg flex flex-col">
-      <div className="max-w-7xl mx-auto w-full space-y-6 relative z-10 flex-1 flex flex-col">
+      <Helmet>
+        <title>{pageTitle}</title>
+        <meta name="description" content={pageDescription} />
+        <meta property="og:title" content={pageTitle} />
+        <meta property="og:description" content={pageDescription} />
+        <meta name="twitter:title" content={pageTitle} />
+        <meta name="twitter:description" content={pageDescription} />
+      </Helmet>
+      <main className="max-w-7xl mx-auto w-full space-y-6 relative z-10 flex-1 flex flex-col">
         
         {/* Top Info Bar */}
         <div className="flex flex-wrap items-center justify-between gap-4 bg-zinc-900/50 border border-zinc-800 rounded-lg px-4 py-2 text-[10px] md:text-xs font-mono text-zinc-400">
@@ -540,7 +553,7 @@ export default function App() {
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           
           {/* Sidebar Navigation */}
-          <div className="lg:col-span-3 flex flex-col gap-2">
+          <nav className="lg:col-span-3 flex flex-col gap-2" aria-label="情報分類導覽">
             <div className="text-xs font-mono text-zinc-500 uppercase tracking-wider mb-2 lg:mb-4 px-2 hidden lg:block">Intelligence Feeds</div>
             <div className="flex flex-row lg:flex-col gap-2 overflow-x-auto lg:overflow-visible pb-2 lg:pb-0 no-scrollbar">
               {CATEGORIES.map((cat) => {
@@ -644,10 +657,10 @@ export default function App() {
                 );
               })}
             </div>
-          </div>
+          </nav>
 
           {/* Main Content Area */}
-          <div className="lg:col-span-9">
+          <section className="lg:col-span-9" aria-label="情報內容">
             <div className="bg-[#0a0a0a] tech-border relative min-h-[500px] flex flex-col z-10">
               
               {/* Top Bar of the Terminal */}
@@ -660,7 +673,7 @@ export default function App() {
               </div>
 
               {/* Content */}
-              <div className="p-6 flex-1 relative">
+              <article className="p-6 flex-1 relative">
                 <h3 className="text-xl font-mono font-bold text-zinc-100 mb-4 border-b border-zinc-800 pb-2 flex items-center gap-2">
                   <Radar className="w-5 h-5 text-red-500" />
                   INTEL_FEED // {CATEGORIES.find(c => c.id === activeTab)?.id.toUpperCase()}
@@ -727,9 +740,9 @@ export default function App() {
                     </div>
                   )}
                 </AnimatePresence>
-              </div>
+              </article>
             </div>
-          </div>
+          </section>
 
         </div>
         
@@ -741,7 +754,7 @@ export default function App() {
             dr.barret.lin@gmail.com
           </a>
         </footer>
-      </div>
+      </main>
 
       {/* API Key Input Modal */}
       <AnimatePresence>
