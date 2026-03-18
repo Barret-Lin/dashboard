@@ -444,7 +444,8 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
     let processedText = text;
     
     // 5. 落實防偽超連結驗證機制 (100% 精確匹配版：嚴格語意與網域對應)
-    const markdownLinkRegex = /\[([^\]]+)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g;
+    // 匹配 Markdown 連結 [text](url) 或 純文字引用 (如 2026-03-18 中央社)
+    const citationRegex = /(?:\[([^\]]+)\]\(([^)\s]+)(?:\s+"[^"]*")?\))|(\d{4}-\d{2}-\d{2}\s+(?!\d{2}:\d{2})[^\s。，！\]\)\(;:：；\.,]+)/g;
     
     const availableChunks = groundingChunks.map((c: any, index: number) => ({
       index,
@@ -672,11 +673,17 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
       }
     };
 
-    processedText = processedText.replace(markdownLinkRegex, (match, linkText, url, offset) => {
+    processedText = processedText.replace(citationRegex, (match, mdLinkText, mdUrl, plainCitationText, offset) => {
+      const isPlainText = !!plainCitationText;
+      const linkText = isPlainText ? plainCitationText : mdLinkText;
+      const url = isPlainText ? '' : mdUrl;
+
       const cleanUrl = url.trim();
-      const cleanUrlNorm = normalizeUrl(cleanUrl);
+      const cleanUrlNorm = cleanUrl ? normalizeUrl(cleanUrl) : '';
       let aiDomain = '';
-      try { aiDomain = new URL(cleanUrl).hostname.replace(/^www\./, '').toLowerCase(); } catch(e) {}
+      if (cleanUrl) {
+        try { aiDomain = new URL(cleanUrl).hostname.replace(/^www\./, '').toLowerCase(); } catch(e) {}
+      }
 
       let prefix = '';
       let actualLinkText = linkText;
@@ -724,7 +731,9 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
       let matchedChunk = null;
 
       // 策略 1: 網址完全命中全局清單 (AI 寫對了真實網址)
-      matchedChunk = availableChunks.find(c => normalizeUrl(c.uri) === cleanUrlNorm);
+      if (cleanUrlNorm) {
+        matchedChunk = availableChunks.find(c => normalizeUrl(c.uri) === cleanUrlNorm);
+      }
 
       // 策略 2: 從 Local Chunks 中尋找 (基於 Grounding 的真實來源)
       if (!matchedChunk && candidateChunks.length > 0) {
