@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Share2, Printer, FileText, FileCode, FileType, Check } from 'lucide-react';
+import { Share2, Printer, FileText, FileCode, FileType, Check, Download } from 'lucide-react';
 
 interface IntelligenceData {
   text: string;
@@ -15,14 +15,14 @@ interface ShareMenuProps {
 }
 
 export function ShareMenu({ data, categoryName }: ShareMenuProps) {
-  const [isOpen, setIsOpen] = useState(false);
+  const [isExportOpen, setIsExportOpen] = useState(false);
   const [copiedType, setCopiedType] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
-        setIsOpen(false);
+        setIsExportOpen(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -96,7 +96,7 @@ export function ShareMenu({ data, categoryName }: ShareMenuProps) {
 
       setCopiedType(type);
       setTimeout(() => setCopiedType(null), 2000);
-      setIsOpen(false);
+      setIsExportOpen(false);
     } catch (err) {
       console.error('Failed to copy: ', err);
       alert('複製失敗，請確認您的瀏覽器是否支援剪貼簿功能。');
@@ -104,7 +104,7 @@ export function ShareMenu({ data, categoryName }: ShareMenuProps) {
   };
 
   const handlePrint = () => {
-    setIsOpen(false);
+    setIsExportOpen(false);
     const printWindow = window.open('', '_blank');
     if (!printWindow) {
       alert('無法開啟列印視窗，請確認是否被瀏覽器阻擋。');
@@ -157,52 +157,89 @@ export function ShareMenu({ data, categoryName }: ShareMenuProps) {
     printWindow.document.close();
   };
 
+  const handleShare = async () => {
+    const title = `${categoryName} - 台海開源情報儀表板 (OSINT)`;
+    const dateStr = new Date().toLocaleString('zh-TW');
+    const plainText = data.text.replace(/\[([^\]]+)\]\([^)]+\)/g, '$1').replace(/[#*`]/g, '');
+    const textToShare = `${title}\n更新時間: ${dateStr}\n\n${plainText}\n\n來源:\n${data.sources.map((s, i) => `${i + 1}. ${s.title} (${s.uri})`).join('\n')}`;
+
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: title,
+          text: textToShare,
+          url: window.location.href,
+        });
+      } catch (err) {
+        if ((err as Error).name !== 'AbortError') {
+          console.error('Error sharing:', err);
+          handleCopy('text');
+          alert('原生分享失敗，已將內容複製到剪貼簿。');
+        }
+      }
+    } else {
+      handleCopy('text');
+      alert('您的瀏覽器不支援原生分享功能，已將內容複製到剪貼簿。');
+    }
+  };
+
   return (
-    <div className="relative" ref={menuRef}>
+    <div className="flex items-center gap-2">
       <button
-        onClick={() => setIsOpen(!isOpen)}
+        onClick={handleShare}
         className="flex items-center gap-2 px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-md transition-colors text-sm font-mono"
-        title="分享 / 匯出"
+        title="分享"
       >
         <Share2 className="w-4 h-4" />
-        <span className="hidden sm:inline">分享 / 匯出</span>
+        <span className="hidden sm:inline">分享</span>
       </button>
 
-      {isOpen && (
-        <div className="absolute right-0 mt-2 w-48 bg-zinc-900 border border-zinc-700 rounded-md shadow-xl z-50 overflow-hidden">
-          <div className="p-1">
-            <button
-              onClick={() => handleCopy('text')}
-              className="w-full flex items-center gap-2 px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-800 rounded transition-colors text-left"
-            >
-              {copiedType === 'text' ? <Check className="w-4 h-4 text-green-500" /> : <FileText className="w-4 h-4" />}
-              複製純文字
-            </button>
-            <button
-              onClick={() => handleCopy('html')}
-              className="w-full flex items-center gap-2 px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-800 rounded transition-colors text-left"
-            >
-              {copiedType === 'html' ? <Check className="w-4 h-4 text-green-500" /> : <FileType className="w-4 h-4" />}
-              複製至 Google Docs
-            </button>
-            <button
-              onClick={() => handleCopy('markdown')}
-              className="w-full flex items-center gap-2 px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-800 rounded transition-colors text-left"
-            >
-              {copiedType === 'markdown' ? <Check className="w-4 h-4 text-green-500" /> : <FileCode className="w-4 h-4" />}
-              複製 Markdown
-            </button>
-            <div className="h-px bg-zinc-800 my-1"></div>
-            <button
-              onClick={handlePrint}
-              className="w-full flex items-center gap-2 px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-800 rounded transition-colors text-left"
-            >
-              <Printer className="w-4 h-4" />
-              列印 / 存為 PDF
-            </button>
+      <div className="relative" ref={menuRef}>
+        <button
+          onClick={() => setIsExportOpen(!isExportOpen)}
+          className="flex items-center gap-2 px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-md transition-colors text-sm font-mono"
+          title="匯出"
+        >
+          <Download className="w-4 h-4" />
+          <span className="hidden sm:inline">匯出</span>
+        </button>
+
+        {isExportOpen && (
+          <div className="absolute right-0 mt-2 w-48 bg-zinc-900 border border-zinc-700 rounded-md shadow-xl z-50 overflow-hidden">
+            <div className="p-1">
+              <button
+                onClick={() => handleCopy('text')}
+                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-800 rounded transition-colors text-left"
+              >
+                {copiedType === 'text' ? <Check className="w-4 h-4 text-green-500" /> : <FileText className="w-4 h-4" />}
+                純文字
+              </button>
+              <button
+                onClick={() => handleCopy('html')}
+                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-800 rounded transition-colors text-left"
+              >
+                {copiedType === 'html' ? <Check className="w-4 h-4 text-green-500" /> : <FileType className="w-4 h-4" />}
+                Google Docs 格式
+              </button>
+              <button
+                onClick={() => handleCopy('markdown')}
+                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-800 rounded transition-colors text-left"
+              >
+                {copiedType === 'markdown' ? <Check className="w-4 h-4 text-green-500" /> : <FileCode className="w-4 h-4" />}
+                Markdown
+              </button>
+              <div className="h-px bg-zinc-800 my-1"></div>
+              <button
+                onClick={handlePrint}
+                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-800 rounded transition-colors text-left"
+              >
+                <Printer className="w-4 h-4" />
+                列印 / 存為 PDF
+              </button>
+            </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }
