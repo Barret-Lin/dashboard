@@ -189,22 +189,8 @@ export default function App() {
   const [loadingStartTime, setLoadingStartTime] = useState<Record<string, Date>>({});
   const [loadingDuration, setLoadingDuration] = useState<Record<string, number>>({});
   const [autoRefresh, setAutoRefresh] = useState(false);
-  const [autoRefreshInterval, setAutoRefreshInterval] = useState(() => {
-    try {
-      const saved = localStorage.getItem('autoRefreshInterval');
-      return saved ? parseInt(saved, 10) : 6;
-    } catch {
-      return 6;
-    }
-  });
-  const [scoreWeights, setScoreWeights] = useState(() => {
-    try {
-      const saved = localStorage.getItem('scoreWeights');
-      return saved ? JSON.parse(saved) : { military: 60, economic: 20, diplomatic: 10, cognitive: 10 };
-    } catch {
-      return { military: 60, economic: 20, diplomatic: 10, cognitive: 10 };
-    }
-  });
+  const [autoRefreshInterval, setAutoRefreshInterval] = useState(6);
+  const [scoreWeights, setScoreWeights] = useState({ military: 60, economic: 20, diplomatic: 10, cognitive: 10 });
   const [showThreatDetails, setShowThreatDetails] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [globalRefreshTrigger, setGlobalRefreshTrigger] = useState(0);
@@ -216,20 +202,8 @@ export default function App() {
     return () => clearInterval(interval);
   }, []);
 
-  const [customApiKey, setCustomApiKey] = useState(() => {
-    try {
-      return sessionStorage.getItem('customApiKey') || '';
-    } catch (e) {
-      return '';
-    }
-  });
-  const [isPaidApiKey, setIsPaidApiKey] = useState(() => {
-    try {
-      return sessionStorage.getItem('isPaidApiKey') === 'true';
-    } catch (e) {
-      return false;
-    }
-  });
+  const [customApiKey, setCustomApiKey] = useState('');
+  const [isPaidApiKey, setIsPaidApiKey] = useState(false);
   const [tempApiKey, setTempApiKey] = useState('');
   const [tempIsPaidApiKey, setTempIsPaidApiKey] = useState(false);
   const [showApiKeyInput, setShowApiKeyInput] = useState(false);
@@ -251,18 +225,6 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    try {
-      if (customApiKey) {
-        sessionStorage.setItem('customApiKey', customApiKey);
-        sessionStorage.setItem('isPaidApiKey', isPaidApiKey.toString());
-      } else {
-        sessionStorage.removeItem('customApiKey');
-        sessionStorage.removeItem('isPaidApiKey');
-      }
-    } catch (e) {
-      // ignore
-    }
-    
     // Reset API status when key changes
     import('./services/intelligenceService').then(({ updateApiStatus }) => {
       updateApiStatus({
@@ -272,6 +234,22 @@ export default function App() {
       });
     });
   }, [customApiKey, isPaidApiKey]);
+
+  // Ensure sensitive data is cleared from memory when the user leaves the page
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      setCustomApiKey('');
+      setTempApiKey('');
+      try {
+        localStorage.clear();
+        sessionStorage.clear();
+      } catch (e) {
+        // ignore
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, []);
 
   const loadThreatLevel = async (keyOverride?: string, force = false, isPaidOverride?: boolean) => {
     setThreatLoading(true);
@@ -360,15 +338,6 @@ export default function App() {
   useEffect(() => {
     loadIntelligence(activeTab);
   }, [activeTab]);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem('autoRefreshInterval', autoRefreshInterval.toString());
-      localStorage.setItem('scoreWeights', JSON.stringify(scoreWeights));
-    } catch (e) {
-      // ignore
-    }
-  }, [autoRefreshInterval, scoreWeights]);
 
   useEffect(() => {
     let interval: NodeJS.Timeout;

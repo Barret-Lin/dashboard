@@ -8,43 +8,18 @@ class ApiRateManager {
   private callCount = 0;
   private lastResetTime = Date.now();
   private subscribers: ((count: number) => void)[] = [];
-  private readonly STORAGE_KEY = 'api_rate_manager_state';
 
   constructor() {
-    this.loadState();
     // Cleanup interval every minute
     setInterval(() => this.cleanup(), 60000);
   }
 
   private loadState() {
-    try {
-      const stored = localStorage.getItem(this.STORAGE_KEY);
-      if (stored) {
-        const state = JSON.parse(stored);
-        const now = Date.now();
-        // Reset if more than 1 minute has passed
-        if (now - state.lastResetTime > 60000) {
-          this.callCount = 0;
-          this.lastResetTime = now;
-        } else {
-          this.callCount = state.callCount;
-          this.lastResetTime = state.lastResetTime;
-        }
-      }
-    } catch (e) {
-      // ignore
-    }
+    // In-memory only, no-op
   }
 
   private saveState() {
-    try {
-      localStorage.setItem(this.STORAGE_KEY, JSON.stringify({
-        callCount: this.callCount,
-        lastResetTime: this.lastResetTime
-      }));
-    } catch (e) {
-      // ignore
-    }
+    // In-memory only, no-op
   }
 
   private cleanup() {
@@ -266,15 +241,16 @@ function getLocalDateString(offsetDays = 0) {
   return `${year}-${month}-${day}`;
 }
 
+const inMemoryCache = new Map<string, { data: any, timestamp: number }>();
+
 function getLocalCache(key: string) {
   try {
-    const cached = localStorage.getItem(key);
+    const cached = inMemoryCache.get(key);
     if (cached) {
-      const parsed = JSON.parse(cached);
-      if (Date.now() - parsed.timestamp < CACHE_TTL) {
-        return { ...parsed.data, timestamp: parsed.timestamp };
+      if (Date.now() - cached.timestamp < CACHE_TTL) {
+        return { ...cached.data, timestamp: cached.timestamp };
       }
-      localStorage.removeItem(key);
+      inMemoryCache.delete(key);
     }
   } catch (e) {
     // ignore
@@ -284,7 +260,7 @@ function getLocalCache(key: string) {
 
 function setLocalCache(key: string, data: any) {
   try {
-    localStorage.setItem(key, JSON.stringify({ data, timestamp: Date.now() }));
+    inMemoryCache.set(key, { data, timestamp: Date.now() });
   } catch (e) {
     // ignore
   }
@@ -292,14 +268,13 @@ function setLocalCache(key: string, data: any) {
 
 export function clearDataCache() {
   try {
-    const keysToRemove = [];
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
+    const keysToRemove: string[] = [];
+    for (const key of inMemoryCache.keys()) {
       if (key && (key.startsWith('intel_') || key.startsWith('threat_') || key.startsWith('timeline_') || key.startsWith('map_data_'))) {
         keysToRemove.push(key);
       }
     }
-    keysToRemove.forEach(key => localStorage.removeItem(key));
+    keysToRemove.forEach(key => inMemoryCache.delete(key));
   } catch (e) {
     // ignore
   }
@@ -473,7 +448,7 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
       });
     }
 
-    const aliases: Record<string, string> = {
+    const aliases: Record<string, string | string[]> = {
       // 台灣 (Taiwan)
       '中央社': 'cna.com.tw',
       '聯合報': 'udn.com',
