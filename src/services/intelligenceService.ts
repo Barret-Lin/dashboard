@@ -443,7 +443,7 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
 
     let processedText = text;
     
-    // 5. 落實防偽超連結驗證機制 (100% 精確匹配版：嚴格語意與網域對應)
+    // 5. 落實防偽超連結驗證機制 (精準評分匹配版)
     // 匹配 Markdown 連結 [text](url) 或 純文字引用 (如 2026-03-18 中央社)
     const citationRegex = /(?:\[([^\]]+)\]\(([^)\s]+)(?:\s+"[^"]*")?\))|(\d{4}-\d{2}-\d{2}\s+(?!\d{2}:\d{2})[^\s。，！\]\)\(;:：；\.,]+)/g;
     
@@ -453,6 +453,25 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
       title: (c.web?.title || '').toLowerCase(),
       domain: c.web?.uri ? new URL(c.web.uri).hostname.toLowerCase().replace(/^www\./, '') : ''
     })).filter((c: any) => c.uri);
+
+    // 建立字元索引到 Chunk 的對應表，精確定位每個句子的來源
+    const textIndexToChunks = new Map<number, number[]>();
+    if (groundingSupports && groundingSupports.length > 0) {
+      groundingSupports.forEach((support: any) => {
+        const sStart = support.segment?.startIndex || 0;
+        const sEnd = support.segment?.endIndex || 0;
+        const indices = support.groundingChunkIndices || [];
+        for (let i = sStart; i < sEnd; i++) {
+          if (!textIndexToChunks.has(i)) {
+            textIndexToChunks.set(i, []);
+          }
+          const current = textIndexToChunks.get(i)!;
+          indices.forEach((idx: number) => {
+            if (!current.includes(idx)) current.push(idx);
+          });
+        }
+      });
+    }
 
     const aliases: Record<string, string> = {
       // 台灣 (Taiwan)
@@ -664,26 +683,10 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
 
     const usedUris = new Set<string>();
 
-    const normalizeUrl = (u: string) => {
-      try {
-        const parsed = new URL(u);
-        return parsed.origin + parsed.pathname.replace(/\/$/, '') + parsed.search;
-      } catch {
-        return u.split('#')[0].replace(/\/$/, '');
-      }
-    };
-
     processedText = processedText.replace(citationRegex, (match, mdLinkText, mdUrl, plainCitationText, offset) => {
       const isPlainText = !!plainCitationText;
       const linkText = isPlainText ? plainCitationText : mdLinkText;
       const url = isPlainText ? '' : mdUrl;
-
-      const cleanUrl = url.trim();
-      const cleanUrlNorm = cleanUrl ? normalizeUrl(cleanUrl) : '';
-      let aiDomain = '';
-      if (cleanUrl) {
-        try { aiDomain = new URL(cleanUrl).hostname.replace(/^www\./, '').toLowerCase(); } catch(e) {}
-      }
 
       let prefix = '';
       let actualLinkText = linkText;
@@ -696,98 +699,103 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
       }
 
       const pubLower = actualLinkText.toLowerCase();
-      const parts = actualLinkText.trim().split(/\s+/);
-      const publisherName = parts.length > 1 ? parts[parts.length - 1].toLowerCase() : pubLower;
 
-      // 1. 尋找與此引言相關的 Grounding Support (局部搜尋)
+      // 1. 尋找與此引言相關的 Grounding Support (精確定位)
       const localChunkIndices = new Set<number>();
-      
-      // 優先尋找直接覆蓋超連結，或在超連結前方 50 字元內結束的 support
-      groundingSupports.forEach((support: any) => {
-        const sStart = support.segment?.startIndex || 0;
-        const sEnd = support.segment?.endIndex || 0;
-        if ((sStart <= offset && sEnd >= offset) || (sEnd <= offset && offset - sEnd <= 50)) {
-          const indices = support.groundingChunkIndices || [];
-          indices.forEach((i: number) => localChunkIndices.add(i));
-        }
-      });
+      let searchOffset = offset - 1;
+      let foundSupport = false;
 
-      // 如果找不到，放寬到前方 150 字元
+      // 往回找最多 200 字元，尋找最近的 Grounding Support
+      while (searchOffset >= Math.max(0, offset - 200)) {
+        if (textIndexToChunks.has(searchOffset)) {
+          textIndexToChunks.get(searchOffset)!.forEach(i => localChunkIndices.add(i));
+          foundSupport = true;
+        } else if (foundSupport) {
+          // 已經找到一塊 Support，遇到空白/無 Support 區塊就停止，避免跨句子
+          break;
+        }
+        searchOffset--;
+      }
+
+      // 如果往回找沒有，稍微往前找 (防呆機制)
       if (localChunkIndices.size === 0) {
-        groundingSupports.forEach((support: any) => {
-          const sStart = support.segment?.startIndex || 0;
-          const sEnd = support.segment?.endIndex || 0;
-          if (sEnd <= offset && offset - sEnd <= 150) {
-            const indices = support.groundingChunkIndices || [];
-            indices.forEach((i: number) => localChunkIndices.add(i));
+        searchOffset = offset + match.length;
+        while (searchOffset < Math.min(text.length, offset + match.length + 50)) {
+          if (textIndexToChunks.has(searchOffset)) {
+            textIndexToChunks.get(searchOffset)!.forEach(i => localChunkIndices.add(i));
+            break;
           }
-        });
+          searchOffset++;
+        }
       }
 
       const candidateIndices = Array.from(localChunkIndices);
       const candidateChunks = candidateIndices.map(i => availableChunks.find(c => c.index === i)).filter(Boolean) as any[];
 
-      let matchedUri = null;
-      let matchedChunk = null;
+      // 2. 評分系統：為所有 Chunk 評分，選出最匹配的來源
+      const scoreChunk = (chunk: any) => {
+        let score = 0;
+        
+        // A. 網址完全匹配 (AI 提供的網址與 Chunk 網址一致)
+        if (url && (chunk.uri === url || chunk.uri.includes(url) || url.includes(chunk.uri))) score += 100;
 
-      // 策略 1: 網址完全命中全局清單 (AI 寫對了真實網址)
-      if (cleanUrlNorm) {
-        matchedChunk = availableChunks.find(c => normalizeUrl(c.uri) === cleanUrlNorm);
-      }
-
-      // 策略 2: 從 Local Chunks 中尋找 (基於 Grounding 的真實來源)
-      if (!matchedChunk && candidateChunks.length > 0) {
-        // 透過媒體別名對應網域
+        // B. 媒體別名與網域匹配 (例如 "中央社" 對應 "cna.com.tw")
         for (const [key, domain] of Object.entries(aliases)) {
-          if (pubLower.includes(key)) {
-            matchedChunk = candidateChunks.find(c => c.domain.includes(domain) && !usedUris.has(c.uri)) || candidateChunks.find(c => c.domain.includes(domain));
-            if (matchedChunk) break;
+          if (pubLower.includes(key) && chunk.domain.includes(domain)) {
+            score += 50;
+            break;
           }
         }
-        // 透過媒體名稱直接出現在 Chunk 標題中
-        if (!matchedChunk && publisherName.length > 1) {
-          matchedChunk = candidateChunks.find(c => c.title.includes(publisherName) && !usedUris.has(c.uri)) || candidateChunks.find(c => c.title.includes(publisherName));
+
+        // C. 標題匹配 (媒體名稱直接出現在 Chunk 標題中)
+        const parts = actualLinkText.trim().split(/\s+/);
+        const publisherName = parts.length > 1 ? parts[parts.length - 1].toLowerCase() : pubLower;
+        if (publisherName.length > 1 && chunk.title.includes(publisherName)) score += 30;
+
+        // D. AI 提供的網域與 Chunk 網域匹配
+        if (url) {
+          try {
+            const aiDomain = new URL(url).hostname.replace(/^www\./, '').toLowerCase();
+            if (chunk.domain.includes(aiDomain) || aiDomain.includes(chunk.domain)) score += 20;
+          } catch (e) {}
         }
-        // 透過 AI 提供的網域確實存在於候選清單中
-        if (!matchedChunk && aiDomain) {
-          matchedChunk = candidateChunks.find(c => (c.domain.includes(aiDomain) || aiDomain.includes(c.domain)) && !usedUris.has(c.uri)) || candidateChunks.find(c => c.domain.includes(aiDomain) || aiDomain.includes(c.domain));
-        }
-        // 強制 Fallback：既然 Grounding Support 指向了這些 Chunks，即使名稱對不上，也直接使用（保證 100% 連結到支援該段落的真實來源）
-        if (!matchedChunk) {
-          matchedChunk = candidateChunks.find(c => !usedUris.has(c.uri)) || candidateChunks[0];
-        }
+
+        // E. 局部 Chunk 加分 (該 Chunk 確實支持這段文字)
+        if (candidateIndices.includes(chunk.index)) score += 15;
+
+        // F. 扣分機制：已使用過的網址稍微扣分，鼓勵多樣性，但不會蓋過強烈匹配
+        if (usedUris.has(chunk.uri)) score -= 5;
+
+        return score;
+      };
+
+      const scoredChunks = availableChunks.map(c => ({ chunk: c, score: scoreChunk(c) }));
+      scoredChunks.sort((a, b) => b.score - a.score);
+
+      let matchedChunk = null;
+
+      // 如果最高分大於 0，代表有合理的匹配
+      if (scoredChunks.length > 0 && scoredChunks[0].score > 0) {
+        matchedChunk = scoredChunks[0].chunk;
       }
 
-      // 策略 3: 如果沒有 Local Chunks，回退到全局搜尋
-      if (!matchedChunk) {
-         for (const [key, domain] of Object.entries(aliases)) {
-           if (pubLower.includes(key)) {
-             matchedChunk = availableChunks.find(c => c.domain.includes(domain) && !usedUris.has(c.uri)) || availableChunks.find(c => c.domain.includes(domain));
-             if (matchedChunk) break;
-           }
-         }
-         if (!matchedChunk && publisherName.length > 1) {
-           matchedChunk = availableChunks.find(c => c.title.includes(publisherName) && !usedUris.has(c.uri)) || availableChunks.find(c => c.title.includes(publisherName));
-         }
-         if (!matchedChunk && aiDomain) {
-           matchedChunk = availableChunks.find(c => (c.domain.includes(aiDomain) || aiDomain.includes(c.domain)) && !usedUris.has(c.uri)) || availableChunks.find(c => c.domain.includes(aiDomain) || aiDomain.includes(c.domain));
-         }
-         // 全局 Fallback：如果真的找不到，找一個還沒用過的來源，如果都用過了就隨便找一個
-         if (!matchedChunk && availableChunks.length > 0) {
-           matchedChunk = availableChunks.find(c => !usedUris.has(c.uri)) || availableChunks[0];
-         }
+      // 局部 Fallback：如果沒有任何文字/網域匹配，但有局部 Chunk，直接使用最高分的局部 Chunk
+      if (!matchedChunk && candidateChunks.length > 0) {
+        const localScored = candidateChunks.map(c => ({ chunk: c, score: scoreChunk(c) })).sort((a, b) => b.score - a.score);
+        matchedChunk = localScored[0].chunk;
       }
 
-      // 嚴格把關：如果有匹配的真實來源，使用真實來源
+      // 全局 Fallback：如果真的找不到，找一個還沒用過的來源，或第一個來源
+      if (!matchedChunk && availableChunks.length > 0) {
+        matchedChunk = availableChunks.find(c => !usedUris.has(c.uri)) || availableChunks[0];
+      }
+
       if (matchedChunk) {
-        matchedUri = matchedChunk.uri;
-        usedUris.add(matchedUri);
-        return `${prefix}[${actualLinkText}](${matchedUri})`;
+        usedUris.add(matchedChunk.uri);
+        return `${prefix}[${actualLinkText}](${matchedChunk.uri})`;
       } else if (url) {
-        // 如果沒有真實來源（例如 AI 沒用搜尋），但 AI 有提供網址，則保留 AI 的網址
         return `${prefix}[${actualLinkText}](${url})`;
       } else {
-        // 如果連 AI 都沒提供網址，只能返回純文字
         return `${prefix}${actualLinkText}`;
       }
     });
