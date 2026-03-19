@@ -517,6 +517,16 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
       'msn': 'msn.com',
       'google': 'news.google.com',
 
+      // 政府與官方機構
+      '外交部': ['mofa.gov.tw', 'mfa.gov.cn'],
+      '國防部': ['mnd.gov.tw', 'mod.gov.cn'],
+      '行政院': 'ey.gov.tw',
+      '立法院': 'ly.gov.tw',
+      '總統府': 'president.gov.tw',
+      '陸委會': 'mac.gov.tw',
+      '國台辦': 'gwytb.gov.cn',
+      '海事局': 'msa.gov.cn',
+
       // 中國大陸及港澳星馬 (China, HK, Macau, Singapore, Malaysia)
       '新華社': 'xinhuanet.com',
       '新華網': 'news.cn',
@@ -525,10 +535,6 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
       '環球時報': 'globaltimes.cn',
       '解放軍報': '81.cn',
       '中國軍網': '81.cn',
-      '國防部': 'mnd.gov.tw',
-      '中國國防部': 'mod.gov.cn',
-      '海事局': 'msa.gov.cn',
-      '外交部': 'mfa.gov.cn',
       '人民網': 'people.com.cn',
       '人民日報': 'people.com.cn',
       '中國日報': 'chinadaily.com.cn',
@@ -730,72 +736,130 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
       }
 
       const candidateIndices = Array.from(localChunkIndices);
-      const candidateChunks = candidateIndices.map(i => availableChunks.find(c => c.index === i)).filter(Boolean) as any[];
+
+      // 預先計算 requestedDomains 和 matchedAliasKeys
+      let requestedDomains: string[] = [];
+      let matchedAliasKeys: string[] = [];
+      
+      for (const [key, domains] of Object.entries(aliases)) {
+        if (pubLower.includes(key)) {
+          matchedAliasKeys.push(key);
+          requestedDomains = requestedDomains.concat(Array.isArray(domains) ? domains : [domains]);
+        }
+      }
 
       // 2. 評分系統：為所有 Chunk 評分，選出最匹配的來源
       const scoreChunk = (chunk: any) => {
         let score = 0;
+        let mediaMatched = false;
+        let isConflict = false;
         
-        // A. 網址完全匹配 (AI 提供的網址與 Chunk 網址一致)
-        if (url && (chunk.uri === url || chunk.uri.includes(url) || url.includes(chunk.uri))) score += 100;
-
-        // B. 媒體別名與網域匹配 (例如 "中央社" 對應 "cna.com.tw")
-        for (const [key, domain] of Object.entries(aliases)) {
-          if (pubLower.includes(key) && chunk.domain.includes(domain)) {
-            score += 50;
-            break;
+        // A. 媒體別名與網域匹配 (最高優先級：語意匹配)
+        if (requestedDomains.length > 0) {
+          const matchesRequested = requestedDomains.some(d => chunk.domain.includes(d));
+          
+          if (matchesRequested) {
+            score += 1000;
+            mediaMatched = true;
+          } else {
+            // 檢查這個 chunk 是否屬於「其他」已知的媒體
+            let belongsToOther = false;
+            for (const [key, domains] of Object.entries(aliases)) {
+              if (matchedAliasKeys.includes(key)) continue;
+              const domainList = Array.isArray(domains) ? domains : [domains];
+              if (domainList.some(d => chunk.domain.includes(d))) {
+                belongsToOther = true;
+                break;
+              }
+            }
+            
+            if (belongsToOther) {
+              isConflict = true; // 嚴重衝突：要求 A 媒體，卻是 B 媒體的連結
+            } else {
+              score -= 500; // 輕微懲罰：要求特定媒體，但這是一個未知的網域
+            }
           }
         }
 
-        // C. 標題匹配 (媒體名稱直接出現在 Chunk 標題中)
+        if (isConflict) {
+          return -10000; // 直接淘汰
+        }
+
+        // B. 標題匹配 (媒體名稱直接出現在 Chunk 標題中)
         const parts = actualLinkText.trim().split(/\s+/);
         const publisherName = parts.length > 1 ? parts[parts.length - 1].toLowerCase() : pubLower;
-        if (publisherName.length > 1 && chunk.title.includes(publisherName)) score += 30;
+        if (!mediaMatched && publisherName.length > 1 && chunk.title.includes(publisherName)) {
+            score += 500;
+            mediaMatched = true;
+        }
+
+        // C. 網址完全匹配 (AI 提供的網址與 Chunk 網址一致)
+        if (url && (chunk.uri === url || chunk.uri.includes(url) || url.includes(chunk.uri))) {
+            score += 200;
+        }
 
         // D. AI 提供的網域與 Chunk 網域匹配
         if (url) {
           try {
             const aiDomain = new URL(url).hostname.replace(/^www\./, '').toLowerCase();
-            if (chunk.domain.includes(aiDomain) || aiDomain.includes(chunk.domain)) score += 20;
+            if (chunk.domain.includes(aiDomain) || aiDomain.includes(chunk.domain)) {
+                score += 100;
+            }
           } catch (e) {}
         }
 
         // E. 局部 Chunk 加分 (該 Chunk 確實支持這段文字)
-        if (candidateIndices.includes(chunk.index)) score += 15;
+        if (candidateIndices.includes(chunk.index)) score += 20;
 
-        // F. 扣分機制：已使用過的網址稍微扣分，鼓勵多樣性，但不會蓋過強烈匹配
+        // F. 扣分機制：已使用過的網址稍微扣分，鼓勵多樣性
         if (usedUris.has(chunk.uri)) score -= 5;
 
         return score;
       };
 
-      const scoredChunks = availableChunks.map(c => ({ chunk: c, score: scoreChunk(c) }));
-      scoredChunks.sort((a, b) => b.score - a.score);
+      const scoredChunks = availableChunks
+        .map(c => ({ chunk: c, score: scoreChunk(c) }))
+        .sort((a, b) => b.score - a.score);
+
+      // 過濾掉衝突和嚴重不匹配的來源 (保留 score > -100 的，允許 -5 的已使用扣分)
+      const validScoredChunks = scoredChunks.filter(c => c.score > -100);
 
       let matchedChunk = null;
 
-      // 如果最高分大於 0，代表有合理的匹配
-      if (scoredChunks.length > 0 && scoredChunks[0].score > 0) {
-        matchedChunk = scoredChunks[0].chunk;
+      if (validScoredChunks.length > 0) {
+        matchedChunk = validScoredChunks[0].chunk;
       }
 
-      // 局部 Fallback：如果沒有任何文字/網域匹配，但有局部 Chunk，直接使用最高分的局部 Chunk
-      if (!matchedChunk && candidateChunks.length > 0) {
-        const localScored = candidateChunks.map(c => ({ chunk: c, score: scoreChunk(c) })).sort((a, b) => b.score - a.score);
-        matchedChunk = localScored[0].chunk;
-      }
-
-      // 全局 Fallback：如果真的找不到，找一個還沒用過的來源，或第一個來源
-      if (!matchedChunk && availableChunks.length > 0) {
-        matchedChunk = availableChunks.find(c => !usedUris.has(c.uri)) || availableChunks[0];
+      // 如果沒有合理匹配，但 AI 有提供 URL，優先使用 AI 的 URL
+      if (!matchedChunk && url) {
+        // 檢查 AI 提供的 URL 是否本身就是個 Conflict (例如文字是中央社，URL 卻是 ltn.com.tw)
+        let isUrlConflict = false;
+        if (requestedDomains.length > 0) {
+           try {
+             const aiDomain = new URL(url).hostname.replace(/^www\./, '').toLowerCase();
+             if (!requestedDomains.some(d => aiDomain.includes(d) || d.includes(aiDomain))) {
+               for (const [key, domains] of Object.entries(aliases)) {
+                 if (matchedAliasKeys.includes(key)) continue;
+                 const domainList = Array.isArray(domains) ? domains : [domains];
+                 if (domainList.some(d => aiDomain.includes(d) || d.includes(aiDomain))) {
+                   isUrlConflict = true;
+                   break;
+                 }
+               }
+             }
+           } catch(e) {}
+        }
+        
+        if (!isUrlConflict) {
+            return `${prefix}[${actualLinkText}](${url})`;
+        }
       }
 
       if (matchedChunk) {
         usedUris.add(matchedChunk.uri);
         return `${prefix}[${actualLinkText}](${matchedChunk.uri})`;
-      } else if (url) {
-        return `${prefix}[${actualLinkText}](${url})`;
       } else {
+        // 如果連 AI 的 URL 都不能用 (或沒有 URL)，就回傳純文字，避免產生錯誤連結
         return `${prefix}${actualLinkText}`;
       }
     });
