@@ -177,6 +177,8 @@ const VerifiedSources = React.memo(function VerifiedSources({ sources }: { sourc
   );
 });
 
+import { ShareMenu } from './components/ShareMenu';
+
 export default function App() {
   const [activeTab, setActiveTab] = useState(CATEGORIES[0].id);
   const [intelligence, setIntelligence] = useState<Record<string, IntelligenceData>>({});
@@ -643,10 +645,15 @@ export default function App() {
 
               {/* Content */}
               <article className="p-6 flex-1 relative">
-                <h3 className="text-xl font-mono font-bold text-zinc-100 mb-4 border-b border-zinc-800 pb-2 flex items-center gap-2">
-                  <Radar className="w-5 h-5 text-red-500" />
-                  INTEL_FEED // {CATEGORIES.find(c => c.id === activeTab)?.id.toUpperCase()}
-                </h3>
+                <div className="flex items-center justify-between border-b border-zinc-800 pb-2 mb-4">
+                  <h3 className="text-xl font-mono font-bold text-zinc-100 flex items-center gap-2">
+                    <Radar className="w-5 h-5 text-red-500" />
+                    INTEL_FEED // {CATEGORIES.find(c => c.id === activeTab)?.id.toUpperCase()}
+                  </h3>
+                  {activeData && !isLoading && (
+                    <ShareMenu data={activeData} categoryName={CATEGORIES.find(c => c.id === activeTab)?.name || ''} />
+                  )}
+                </div>
                 <AnimatePresence mode="wait">
                   {isLoading ? (
                     <motion.div 
