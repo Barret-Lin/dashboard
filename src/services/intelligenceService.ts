@@ -280,8 +280,34 @@ export function clearDataCache() {
   }
 }
 
+export interface DailyCache {
+  date: string;
+  baseScores: Record<string, number>;
+  categoryData: Record<string, IntelligenceData>;
+}
 
-export async function fetchIntelligence(categoryId: string, categoryQuery: string, customApiKey?: string, forceRefresh = false, isPaidKey = false): Promise<IntelligenceData> {
+export function getDailyCache(): DailyCache {
+  const today = new Date().toLocaleDateString('zh-TW');
+  try {
+    const stored = localStorage.getItem('intel_daily_cache');
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      if (parsed.date === today) {
+        return parsed;
+      }
+    }
+  } catch (e) {}
+  return { date: today, baseScores: {}, categoryData: {} };
+}
+
+export function saveDailyCache(cache: DailyCache) {
+  try {
+    localStorage.setItem('intel_daily_cache', JSON.stringify(cache));
+  } catch (e) {}
+}
+
+
+export async function fetchIntelligence(categoryId: string, categoryQuery: string, customApiKey?: string, forceRefresh = false, isPaidKey = false, existingData?: IntelligenceData): Promise<IntelligenceData> {
   const cleanApiKey = customApiKey?.trim().replace(/[\s\uFEFF\xA0]/g, '').replace(/[^a-zA-Z0-9_-]/g, '');
   if (!cleanApiKey) {
     return {
@@ -340,6 +366,10 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
 3. **戰略意圖分析**：簡述背後可能的戰略或政治目的。
 
 請確保資訊是最新的，並基於真實的新聞報導與社群動態。`;
+
+    if (existingData) {
+      prompt += `\n\n【既有情報內容】：\n${existingData.text}\n\n請「只」補充「不在上述內容中」的最新重大事件。如果有新的事件，請將其格式化並輸出。如果沒有新的重大事件，請直接回答「無新增重大事件」。\n\n**重要指示**：無論是否有新事件，請確保所有引用內容及關鍵論點的來源「日期＋媒體」連結都是正確的，且必須是真實存在的連結。`;
+    }
   } else {
     prompt = `現在精確時間是當地時間 ${now} (YYYY-MM-DD: ${todayStr})。
 請扮演頂尖的開源情報（OSINT）分析師。你的任務是彙整「過去一週（當地時間 ${oneWeekAgoStr} 至 ${todayStr}）」關於中國對台灣的「${categoryQuery}」最新動態與新聞。
@@ -413,7 +443,7 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
       })
       .filter((s: any) => s.uri);
 
-    const uniqueSources = Array.from(new Map(sources.map((s: any) => [s.uri, s])).values()) as { title: string; uri: string }[];
+    let uniqueSources = Array.from(new Map(sources.map((s: any) => [s.uri, s])).values()) as { title: string; uri: string }[];
     const uniqueAllSources = Array.from(new Map(allSources.map((s: any) => [s.uri, s])).values()) as { title: string; uri: string }[];
 
     let processedText = text;
@@ -845,6 +875,16 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
       }
     });
 
+    if (existingData && categoryId === 'new_threat') {
+      if (processedText.includes('無新增重大事件') || processedText.trim().length < 20) {
+        processedText = existingData.text;
+        uniqueSources = existingData.sources;
+      } else {
+        processedText = existingData.text + '\n\n---\n\n### 補充更新 (' + new Date().toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit' }) + ')\n\n' + processedText;
+        uniqueSources = Array.from(new Map([...existingData.sources, ...uniqueSources].map(s => [s.uri, s])).values());
+      }
+    }
+
     const result = {
       text: processedText,
       sources: uniqueSources,
@@ -871,6 +911,52 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
       isDailyLimit,
       isInvalidKey
     };
+  }
+}
+
+export async function recalculateDimensionScore(
+  categoryId: string,
+  categoryQuery: string,
+  content: string,
+  customApiKey?: string,
+  isPaidKey = false
+): Promise<number | null> {
+  const cleanApiKey = customApiKey?.trim().replace(/[\s\uFEFF\xA0]/g, '').replace(/[^a-zA-Z0-9_-]/g, '');
+  if (!cleanApiKey) return null;
+
+  const now = new Date();
+  const todayStr = now.toLocaleDateString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit' }).replace(/\//g, '-');
+
+  const prompt = `現在精確時間是當地時間 ${now.toLocaleString()} (YYYY-MM-DD: ${todayStr})。
+請扮演頂尖的開源情報（OSINT）分析師。以下是關於台海局勢「${categoryQuery}」面向的最新情報內容：
+
+${content}
+
+請依據上述內容，重新評估「${categoryQuery}」面向的威脅評分 (0~100)。
+請嚴格回傳 JSON 格式，不要包含 Markdown 語法或額外文字。
+JSON 格式範例：
+{
+  "newScore": 65,
+  "reason": "簡短的評分理由（繁體中文）..."
+}`;
+
+  const ai = new GoogleGenAI({ apiKey: cleanApiKey });
+  try {
+    const response = await executeWithLock(() => generateContentWithFallback(ai, prompt, {
+      temperature: 0.1,
+    }), isPaidKey);
+
+    let text = response.text || '{}';
+    text = text.replace(/^```json\s*/, '').replace(/\s*```$/, '').trim();
+    const parsedData = JSON.parse(text);
+    
+    if (typeof parsedData.newScore === 'number') {
+      return parsedData.newScore;
+    }
+    return null;
+  } catch (error) {
+    console.error('Failed to recalculate dimension score:', error);
+    return null;
   }
 }
 

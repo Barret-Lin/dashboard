@@ -9,7 +9,7 @@ import Markdown from 'react-markdown';
 import { Helmet } from 'react-helmet-async';
 import { motion, AnimatePresence } from 'motion/react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
-import { fetchIntelligence, fetchOverallThreatLevel, IntelligenceData, ThreatLevelData, apiRateManager, clearDataCache, subscribeToApiStatus, ApiStatus } from './services/intelligenceService';
+import { fetchIntelligence, fetchOverallThreatLevel, recalculateDimensionScore, IntelligenceData, ThreatLevelData, apiRateManager, clearDataCache, subscribeToApiStatus, ApiStatus, getDailyCache, saveDailyCache } from './services/intelligenceService';
 import { SatelliteMaps } from './components/SatelliteMaps';
 import { TimelineView } from './components/TimelineView';
 
@@ -181,7 +181,9 @@ import { ShareMenu } from './components/ShareMenu';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState(CATEGORIES[0].id);
-  const [intelligence, setIntelligence] = useState<Record<string, IntelligenceData>>({});
+  const [intelligence, setIntelligence] = useState<Record<string, IntelligenceData>>(() => {
+    return getDailyCache().categoryData || {};
+  });
   const [loading, setLoading] = useState<Record<string, boolean>>({});
   const [threatLevel, setThreatLevel] = useState<ThreatLevelData | null>(null);
   const [threatLoading, setThreatLoading] = useState(false);
@@ -257,6 +259,8 @@ export default function App() {
     setThreatLoading(true);
     try {
       const data = await fetchOverallThreatLevel(keyOverride ?? customApiKey, force, isPaidOverride ?? isPaidApiKey, scoreWeights);
+      let increasedDimensions: string[] = [];
+      
       if (data.isRateLimited) {
         setApiKeyModalReason(data.isDailyLimit ? 'DAILY_LIMIT' : 'RATE_LIMIT');
         setShowApiKeyInput(true);
@@ -270,13 +274,75 @@ export default function App() {
         setShowApiKeyInput(true);
         setThreatLevel(prev => prev ? prev : data);
       } else {
-        setThreatLevel(data);
+        // Update daily cache base scores if this is the first successful load
+        const dailyCache = getDailyCache();
+        let cacheUpdated = false;
+        
+        if (data.scores) {
+          Object.entries(data.scores).forEach(([key, value]) => {
+            if (dailyCache.baseScores[key] === undefined) {
+              dailyCache.baseScores[key] = value;
+              cacheUpdated = true;
+              increasedDimensions.push(key);
+            } else if (value > dailyCache.baseScores[key]) {
+              dailyCache.baseScores[key] = value;
+              cacheUpdated = true;
+              increasedDimensions.push(key);
+            }
+          });
+          
+          if (cacheUpdated) {
+            saveDailyCache(dailyCache);
+          }
+          
+          setThreatLevel(prev => {
+            const currentScores = prev?.scores || dailyCache.baseScores;
+            const mergedScores = { ...data.scores };
+            
+            Object.entries(data.scores!).forEach(([key, value]) => {
+              if (!increasedDimensions.includes(key)) {
+                // Keep the current score because the tab won't be updated
+                if (currentScores[key] !== undefined) {
+                  mergedScores[key] = currentScores[key];
+                }
+              }
+            });
+            
+            // Recalculate total score and level based on merged scores
+            let totalScore = 0;
+            let totalWeight = 0;
+            Object.entries(mergedScores).forEach(([key, score]) => {
+              const weight = scoreWeights[key as keyof typeof scoreWeights] || 1;
+              totalScore += score * weight;
+              totalWeight += weight;
+            });
+            const finalScore = Math.round(totalScore / totalWeight);
+            
+            let level: ThreatLevelData['level'] = 'LOW';
+            if (finalScore > 80) level = 'CRITICAL';
+            else if (finalScore > 60) level = 'HIGH';
+            else if (finalScore > 40) level = 'ELEVATED';
+            else if (finalScore > 20) level = 'GUARDED';
+            
+            return {
+              ...data,
+              scores: mergedScores,
+              totalScore: finalScore,
+              level: level
+            };
+          });
+        } else {
+          setThreatLevel(data);
+        }
+        
         if (data.timestamp) {
           setLastUpdated(new Date(data.timestamp));
         }
       }
+      return { data, increasedDimensions };
     } catch (e) {
       console.error(e);
+      return { data: null, increasedDimensions: [] };
     } finally {
       setThreatLoading(false);
     }
@@ -297,7 +363,8 @@ export default function App() {
     try {
       const category = CATEGORIES.find(c => c.id === categoryId);
       if (category) {
-        const data = await fetchIntelligence(category.id, category.query, keyOverride ?? customApiKey, force, isPaidOverride ?? isPaidApiKey);
+        const existingData = categoryId === 'new_threat' ? getDailyCache().categoryData[categoryId] : undefined;
+        const data = await fetchIntelligence(category.id, category.query, keyOverride ?? customApiKey, force, isPaidOverride ?? isPaidApiKey, existingData);
         if (data.isRateLimited) {
           setApiKeyModalReason(data.isDailyLimit ? 'DAILY_LIMIT' : 'RATE_LIMIT');
           setShowApiKeyInput(true);
@@ -311,10 +378,55 @@ export default function App() {
           setShowApiKeyInput(true);
           setIntelligence(prev => prev[categoryId] ? prev : { ...prev, [categoryId]: data });
         } else {
+          const prevData = intelligence[categoryId] || getDailyCache().categoryData[categoryId];
+          const contentChanged = !prevData || prevData.text !== data.text;
+
           setIntelligence(prev => ({ ...prev, [categoryId]: data }));
           const updateTime = data.timestamp ? new Date(data.timestamp) : new Date();
           setLastUpdated(updateTime);
           setCategoryUpdated(prev => ({ ...prev, [categoryId]: updateTime }));
+          
+          const dailyCache = getDailyCache();
+          dailyCache.categoryData[categoryId] = data;
+          saveDailyCache(dailyCache);
+
+          if (contentChanged && categoryId !== 'new_threat') {
+            recalculateDimensionScore(
+              categoryId,
+              category.query,
+              data.text,
+              keyOverride ?? customApiKey,
+              isPaidOverride ?? isPaidApiKey
+            ).then(newScore => {
+              if (newScore !== null) {
+                setThreatLevel(prev => {
+                  if (!prev) return prev;
+                  const updatedScores = { ...prev.scores, [categoryId]: newScore };
+                  let totalScoreSum = 0;
+                  let totalWeight = 0;
+                  Object.entries(updatedScores).forEach(([key, score]) => {
+                    const weight = scoreWeights[key as keyof typeof scoreWeights] || 1;
+                    totalScoreSum += score * weight;
+                    totalWeight += weight;
+                  });
+                  const totalScore = Math.round(totalScoreSum / totalWeight);
+                  let level: ThreatLevelData['level'] = 'LOW';
+                  if (totalScore > 80) level = 'CRITICAL';
+                  else if (totalScore > 60) level = 'HIGH';
+                  else if (totalScore > 40) level = 'ELEVATED';
+                  else if (totalScore > 20) level = 'GUARDED';
+                  
+                  return {
+                    ...prev,
+                    level,
+                    totalScore,
+                    scores: updatedScores,
+                    timestamp: Date.now()
+                  };
+                });
+              }
+            });
+          }
         }
       }
     } catch (e) {
@@ -351,13 +463,39 @@ export default function App() {
     return () => clearInterval(interval);
   }, [autoRefresh, autoRefreshInterval, activeTab, customApiKey]);
 
-  const handleRefreshAll = (keyOverride?: string, isPaidOverride?: boolean) => {
+  const handleRefreshAll = async (keyOverride?: string, isPaidOverride?: boolean) => {
     clearDataCache();
     setGlobalRefreshTrigger(prev => prev + 1);
     const keyToUse = typeof keyOverride === 'string' ? keyOverride : customApiKey;
     const isPaidToUse = typeof isPaidOverride === 'boolean' ? isPaidOverride : isPaidApiKey;
-    loadThreatLevel(keyToUse, true, isPaidToUse);
-    loadIntelligence(activeTab, true, keyToUse, isPaidToUse);
+    const { increasedDimensions } = await loadThreatLevel(keyToUse, true, isPaidToUse);
+    
+    if (increasedDimensions.length > 0) {
+      setIntelligence(prev => {
+        const next = { ...prev };
+        increasedDimensions.forEach(dim => {
+          delete next[dim];
+        });
+        return next;
+      });
+      
+      const dailyCache = getDailyCache();
+      increasedDimensions.forEach(dim => {
+        delete dailyCache.categoryData[dim];
+      });
+      saveDailyCache(dailyCache);
+    }
+    
+    if (activeTab === 'new_threat') {
+      loadIntelligence('new_threat', true, keyToUse, isPaidToUse);
+    } else {
+      // Fetch new_threat in background
+      loadIntelligence('new_threat', true, keyToUse, isPaidToUse);
+      
+      if (increasedDimensions.includes(activeTab)) {
+        loadIntelligence(activeTab, true, keyToUse, isPaidToUse);
+      }
+    }
   };
 
   const activeData = intelligence[activeTab];
