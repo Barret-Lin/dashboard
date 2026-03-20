@@ -97,6 +97,26 @@ const CopyableSourceCard = React.memo(function CopyableSourceCard({ source }: { 
     setTimeout(() => setCopied(false), 2000);
   }, [source.uri]);
 
+  const isUrl = useMemo(() => {
+    try {
+      new URL(source.uri);
+      return true;
+    } catch {
+      return false;
+    }
+  }, [source.uri]);
+
+  if (!isUrl) {
+    return (
+      <div className="block p-3 bg-[#111] tech-border pr-3">
+        <p className="text-sm text-zinc-300 truncate">{source.title}</p>
+        {source.uri && source.uri !== source.title && (
+          <p className="text-xs text-zinc-500 truncate mt-1 font-mono">{source.uri}</p>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="relative group">
       <a 
@@ -610,7 +630,11 @@ export default function App() {
                             </a>
                           );
                         } catch (e) {
-                          return null;
+                          return (
+                            <span key={i} className="text-[10px] text-zinc-400 truncate max-w-[100px] border border-zinc-800 bg-zinc-900/50 px-1.5 py-0.5 rounded shrink-0 font-mono">
+                              {s.title || s.uri}
+                            </span>
+                          );
                         }
                       })}
                     </div>
@@ -691,6 +715,19 @@ export default function App() {
                       <div className="flex items-center gap-2">
                         <Icon className={`w-5 h-5 ${isActive ? 'text-red-500' : ''}`} />
                         <span className="font-medium whitespace-nowrap">{cat.name}</span>
+                        {cat.id !== 'new_threat' && threatLevel?.scores && threatLevel.scores[cat.id as keyof typeof threatLevel.scores] !== undefined && (
+                          <span 
+                            className={`text-[10px] px-1.5 py-0.5 rounded font-mono ${
+                              threatLevel.scores[cat.id as keyof typeof threatLevel.scores] >= 80 ? 'bg-red-900/50 text-red-400 border border-red-900' :
+                              threatLevel.scores[cat.id as keyof typeof threatLevel.scores] >= 60 ? 'bg-orange-900/50 text-orange-400 border border-orange-900' :
+                              threatLevel.scores[cat.id as keyof typeof threatLevel.scores] >= 40 ? 'bg-yellow-900/50 text-yellow-400 border border-yellow-900' :
+                              'bg-green-900/50 text-green-400 border border-green-900'
+                            }`}
+                            title={`權重評分: ${threatLevel.scores[cat.id as keyof typeof threatLevel.scores]}`}
+                          >
+                            {threatLevel.scores[cat.id as keyof typeof threatLevel.scores]}
+                          </span>
+                        )}
                       </div>
                       
                       <div className="flex items-center gap-2">
