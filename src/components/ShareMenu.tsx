@@ -161,7 +161,7 @@ export function ShareMenu({ data, categoryName }: ShareMenuProps) {
     const title = `${categoryName} - 台海開源情報儀表板 (OSINT)`;
     const dateStr = new Date().toLocaleString('zh-TW');
     const plainText = data.text.replace(/\[([^\]]+)\]\([^)]+\)/g, '$1').replace(/[#*`]/g, '');
-    const textToShare = `${title}\n更新時間: ${dateStr}\n\n${plainText}\n\n來源:\n${data.sources.map((s, i) => `${i + 1}. ${s.title} (${s.uri})`).join('\n')}`;
+    const textToShare = `${title}\n更新時間: ${dateStr}\n\n${plainText}\n\n來源:\n${data.sources.map((s, i) => `${i + 1}. ${s.title}`).join('\n')}`;
 
     if (navigator.share) {
       try {
@@ -173,12 +173,12 @@ export function ShareMenu({ data, categoryName }: ShareMenuProps) {
       } catch (err) {
         if ((err as Error).name !== 'AbortError') {
           console.error('Error sharing:', err);
-          handleCopy('text');
+          await navigator.clipboard.writeText(textToShare);
           alert('原生分享失敗，已將內容複製到剪貼簿。');
         }
       }
     } else {
-      handleCopy('text');
+      await navigator.clipboard.writeText(textToShare);
       alert('您的瀏覽器不支援原生分享功能，已將內容複製到剪貼簿。');
     }
   };

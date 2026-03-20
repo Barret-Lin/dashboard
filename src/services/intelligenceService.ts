@@ -679,6 +679,12 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
         actualLinkText = malformedMatch[2];
       }
 
+      // 檢查是否只有日期沒有媒體名稱
+      const isJustDate = /^(?:\d{2,4}[-/年])?\d{1,2}[-/月]\d{1,2}日?$/.test(actualLinkText.trim());
+      if (isJustDate) {
+        return `${prefix}${actualLinkText}`;
+      }
+
       const pubLower = actualLinkText.toLowerCase();
 
       // 1. 尋找與此引言相關的 Grounding Support (精確定位)
