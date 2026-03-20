@@ -57,6 +57,36 @@ const CopyableMarkdownLink = React.memo(function CopyableMarkdownLink({ href, ch
     }
   }, [href]);
 
+  const isUrl = useMemo(() => {
+    if (href === '#') return true;
+    try {
+      if (!href) return false;
+      new URL(href);
+      return true;
+    } catch {
+      return false;
+    }
+  }, [href]);
+
+  const isJustDateText = useMemo(() => {
+    const getText = (node: any): string => {
+      if (typeof node === 'string') return node;
+      if (typeof node === 'number') return node.toString();
+      if (Array.isArray(node)) return node.map(getText).join('');
+      if (node && node.props && node.props.children) return getText(node.props.children);
+      return '';
+    };
+    const text = getText(children);
+    const stripped = text.replace(/[0-9\-\/\.年月日至到~()（）當地時間\s]/g, '').trim();
+    if (stripped.length === 0) return true;
+    if (/^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*$/i.test(stripped)) return true;
+    return false;
+  }, [children]);
+
+  if (!isUrl || isJustDateText) {
+    return <>{children}</>;
+  }
+
   return (
     <span className="inline-flex items-center gap-1 align-middle">
       <a 
@@ -64,7 +94,7 @@ const CopyableMarkdownLink = React.memo(function CopyableMarkdownLink({ href, ch
         {...props} 
         target={href === '#' ? undefined : "_blank"} 
         rel={href === '#' ? undefined : "noopener noreferrer"} 
-        className={href === '#' ? "text-zinc-400 cursor-not-allowed underline decoration-dotted" : "text-blue-400 hover:text-blue-300 underline"}
+        className={href === '#' ? "text-zinc-400 cursor-not-allowed underline decoration-dotted" : "text-blue-400 hover:text-blue-300 underline break-all"}
         onClick={(e) => {
           if (href === '#') {
             e.preventDefault();
@@ -76,7 +106,7 @@ const CopyableMarkdownLink = React.memo(function CopyableMarkdownLink({ href, ch
       {href && href !== '#' && (
         <button
           onClick={handleCopy}
-          className="p-1 rounded text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 transition-colors inline-flex items-center justify-center"
+          className="p-1 rounded text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 transition-colors inline-flex items-center justify-center shrink-0"
           title="複製連結"
         >
           {copied ? <Check className="w-3 h-3 text-green-500" /> : <Copy className="w-3 h-3" />}
@@ -106,7 +136,15 @@ const CopyableSourceCard = React.memo(function CopyableSourceCard({ source }: { 
     }
   }, [source.uri]);
 
-  if (!isUrl) {
+  const isJustDateText = useMemo(() => {
+    const text = source.title || '';
+    const stripped = text.replace(/[0-9\-\/\.年月日至到~()（）當地時間\s]/g, '').trim();
+    if (stripped.length === 0) return true;
+    if (/^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*$/i.test(stripped)) return true;
+    return false;
+  }, [source.title]);
+
+  if (!isUrl || isJustDateText) {
     return (
       <div className="block p-3 bg-[#111] tech-border pr-3">
         <p className="text-sm text-zinc-300 truncate">{source.title}</p>
@@ -624,6 +662,18 @@ export default function App() {
                       {threatLevel.sources.slice(0, 3).map((s, i) => {
                         try {
                           const domain = new URL(s.uri).hostname.replace('www.', '');
+                          const text = s.title || '';
+                          const stripped = text.replace(/[0-9\-\/\.年月日至到~()（）當地時間\s]/g, '').trim();
+                          const isJustDateText = stripped.length === 0 || /^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*$/i.test(stripped);
+                          
+                          if (isJustDateText) {
+                            return (
+                              <span key={i} className="text-[10px] text-zinc-400 truncate max-w-[100px] border border-zinc-800 bg-zinc-900/50 px-1.5 py-0.5 rounded shrink-0 font-mono">
+                                {s.title || s.uri}
+                              </span>
+                            );
+                          }
+
                           return (
                             <a key={i} href={s.uri} target="_blank" rel="noreferrer" className="text-[10px] text-blue-400 hover:text-blue-300 truncate max-w-[100px] border border-blue-900/50 bg-blue-900/20 px-1.5 py-0.5 rounded shrink-0 font-mono">
                               {domain}
