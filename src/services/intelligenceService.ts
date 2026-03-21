@@ -317,11 +317,15 @@ export async function fetchIntelligence(categoryId: string, categoryQuery: strin
     };
   }
 
+  if (existingData && (existingData.isMissingKey || existingData.text.includes('需要 API 金鑰'))) {
+    existingData = undefined;
+  }
+
   const cacheKey = `intel_${categoryId}_${cleanApiKey || 'default'}`;
   
   if (!forceRefresh) {
     const cachedData = getLocalCache(cacheKey);
-    if (cachedData) {
+    if (cachedData && !(cachedData as IntelligenceData).isMissingKey && !(cachedData as IntelligenceData).text.includes('需要 API 金鑰')) {
       return cachedData as IntelligenceData;
     }
   }
@@ -981,7 +985,7 @@ export async function fetchOverallThreatLevel(
   
   if (!forceRefresh) {
     const cachedData = getLocalCache(cacheKey);
-    if (cachedData) {
+    if (cachedData && !(cachedData as ThreatLevelData).summary.includes('需要 API 金鑰')) {
       return cachedData as ThreatLevelData;
     }
   }

@@ -87,7 +87,14 @@ const CopyableMarkdownLink = React.memo(function CopyableMarkdownLink({ href, ch
     
     // 檢查是否包含媒體名稱特徵 (去除日期、數字、常見符號後，還有剩下的中英文文字)
     const strippedText = text.replace(/[0-9\-\/\.年月日至到~()（）\[\]【】「」『』《》<>""''|_+?!@#$%^&*\s:：,，]/g, '').trim();
+    
+    // 如果包含中文，媒體名稱通常很短 (例如：中央社、聯合報)，但有些政府機構名稱較長 (例如：中國人民解放軍東部戰區)，限制長度 <= 15
+    // 如果只有英文，長度可以長一點 (例如：The Wall Street Journal)，限制長度 <= 30
+    const hasChinese = /[\u4e00-\u9fa5]/.test(strippedText);
+    const isLengthValid = hasChinese ? strippedText.length <= 15 : strippedText.length <= 30;
+
     const hasMedia = /[a-zA-Z\u4e00-\u9fa5]/.test(strippedText) && 
+      isLengthValid &&
       !/^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*$/i.test(strippedText) &&
       !/^(Mon|Tue|Wed|Thu|Fri|Sat|Sun)[a-z]*$/i.test(strippedText) &&
       !/^(EST|EDT|CST|CDT|MST|MDT|PST|PDT|GMT|UTC)$/i.test(strippedText);
