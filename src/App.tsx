@@ -430,7 +430,8 @@ export default function App() {
   };
 
   const loadIntelligence = async (categoryId: string, force = false, keyOverride?: string, isPaidOverride?: boolean) => {
-    if (!force && intelligence[categoryId]) return;
+    const currentData = intelligence[categoryId];
+    if (!force && currentData && !currentData.isMissingKey && !currentData.text.includes('需要 API 金鑰')) return;
     
     const startTime = new Date();
     setLoading(prev => ({ ...prev, [categoryId]: true }));
@@ -573,9 +574,8 @@ export default function App() {
       // Fetch new_threat in background
       loadIntelligence('new_threat', true, keyToUse, isPaidToUse);
       
-      if (increasedDimensions.includes(activeTab)) {
-        loadIntelligence(activeTab, true, keyToUse, isPaidToUse);
-      }
+      // Always refresh the active tab when handleRefreshAll is called
+      loadIntelligence(activeTab, true, keyToUse, isPaidToUse);
     }
   };
 

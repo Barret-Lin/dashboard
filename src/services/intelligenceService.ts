@@ -977,7 +977,8 @@ export async function fetchOverallThreatLevel(
       totalScore: 0,
       summary: '需要 API 金鑰以進行評估',
       sources: [],
-      scores: { military: 0, economic: 0, diplomatic: 0, cognitive: 0 }
+      scores: { military: 0, economic: 0, diplomatic: 0, cognitive: 0 },
+      isMissingKey: true
     };
   }
 
@@ -985,7 +986,7 @@ export async function fetchOverallThreatLevel(
   
   if (!forceRefresh) {
     const cachedData = getLocalCache(cacheKey);
-    if (cachedData && !(cachedData as ThreatLevelData).summary.includes('需要 API 金鑰')) {
+    if (cachedData && !(cachedData as ThreatLevelData).isMissingKey && !(cachedData as ThreatLevelData).summary.includes('需要 API 金鑰')) {
       return cachedData as ThreatLevelData;
     }
   }
