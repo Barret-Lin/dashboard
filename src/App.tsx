@@ -79,8 +79,11 @@ const CopyableMarkdownLink = React.memo(function CopyableMarkdownLink({ href, ch
     };
     const text = getText(children).trim();
     
+    if (!text || text.length > 80) return false;
+    
     // 檢查是否包含日期特徵 (YYYY-MM-DD, YYYY/MM/DD, YYYY年MM月DD日, MM-DD, MM/DD, MM月DD日)
-    const hasDate = /(?:\d{4}[-/\.年])?\d{1,2}[-/\.月]\d{1,2}日?/.test(text);
+    // 避免匹配到章節編號如 "3.1" (除非有年份如 "2024.3.1")
+    const hasDate = /(?:\d{2,4}[-/\.年])?(?:0?[1-9]|1[0-2])[-/月](?:0?[1-9]|[12]\d|3[01])日?|(?:\d{2,4})[-/\.年](?:0?[1-9]|1[0-2])[-/\.月](?:0?[1-9]|[12]\d|3[01])日?/.test(text);
     
     // 檢查是否包含媒體名稱特徵 (去除日期、數字、常見符號後，還有剩下的中英文文字)
     const strippedText = text.replace(/[0-9\-\/\.年月日至到~()（）\[\]【】「」『』《》<>""''|_+?!@#$%^&*\s:：,，]/g, '').trim();
@@ -147,7 +150,8 @@ const CopyableSourceCard = React.memo(function CopyableSourceCard({ source }: { 
 
   const isValidFormat = useMemo(() => {
     const text = source.title || '';
-    const hasDate = /(?:\d{4}[-/\.年])?\d{1,2}[-/\.月]\d{1,2}日?/.test(text);
+    if (!text || text.length > 100) return false;
+    const hasDate = /(?:\d{2,4}[-/\.年])?(?:0?[1-9]|1[0-2])[-/月](?:0?[1-9]|[12]\d|3[01])日?|(?:\d{2,4})[-/\.年](?:0?[1-9]|1[0-2])[-/\.月](?:0?[1-9]|[12]\d|3[01])日?/.test(text);
     const strippedText = text.replace(/[0-9\-\/\.年月日至到~()（）\[\]【】「」『』《》<>""''|_+?!@#$%^&*\s:：,，]/g, '').trim();
     const hasMedia = /[a-zA-Z\u4e00-\u9fa5]/.test(strippedText) && 
       !/^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*$/i.test(strippedText) &&
@@ -675,10 +679,13 @@ export default function App() {
                         try {
                           const domain = new URL(s.uri).hostname.replace('www.', '');
                           const text = s.title || '';
-                          const hasDate = /(?:\d{4}[-/\.年])?\d{1,2}[-/\.月]\d{1,2}日?/.test(text);
-                          const strippedText = text.replace(/[0-9\-\/\.年月日至到~()（）當地時間\s:：,，]/g, '').trim();
-                          const hasMedia = strippedText.length > 0 && !/^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*$/i.test(strippedText);
-                          const isValidFormat = hasDate && hasMedia;
+                          const hasDate = /(?:\d{2,4}[-/\.年])?(?:0?[1-9]|1[0-2])[-/月](?:0?[1-9]|[12]\d|3[01])日?|(?:\d{2,4})[-/\.年](?:0?[1-9]|1[0-2])[-/\.月](?:0?[1-9]|[12]\d|3[01])日?/.test(text);
+                          const strippedText = text.replace(/[0-9\-\/\.年月日至到~()（）\[\]【】「」『』《》<>""''|_+?!@#$%^&*\s:：,，]/g, '').trim();
+                          const hasMedia = /[a-zA-Z\u4e00-\u9fa5]/.test(strippedText) && 
+                            !/^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*$/i.test(strippedText) &&
+                            !/^(Mon|Tue|Wed|Thu|Fri|Sat|Sun)[a-z]*$/i.test(strippedText) &&
+                            !/^(EST|EDT|CST|CDT|MST|MDT|PST|PDT|GMT|UTC)$/i.test(strippedText);
+                          const isValidFormat = text.length <= 100 && hasDate && hasMedia;
                           
                           if (!isValidFormat) {
                             return (
