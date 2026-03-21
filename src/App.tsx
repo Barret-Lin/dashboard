@@ -68,7 +68,8 @@ const CopyableMarkdownLink = React.memo(function CopyableMarkdownLink({ href, ch
     }
   }, [href]);
 
-  const isJustDateText = useMemo(() => {
+  const isValidFormat = useMemo(() => {
+    if (href === '#') return true;
     const getText = (node: any): string => {
       if (typeof node === 'string') return node;
       if (typeof node === 'number') return node.toString();
@@ -76,14 +77,19 @@ const CopyableMarkdownLink = React.memo(function CopyableMarkdownLink({ href, ch
       if (node && node.props && node.props.children) return getText(node.props.children);
       return '';
     };
-    const text = getText(children);
-    const stripped = text.replace(/[0-9\-\/\.年月日至到~()（）當地時間\s]/g, '').trim();
-    if (stripped.length === 0) return true;
-    if (/^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*$/i.test(stripped)) return true;
-    return false;
-  }, [children]);
+    const text = getText(children).trim();
+    
+    // 檢查是否包含日期特徵 (YYYY-MM-DD, YYYY/MM/DD, YYYY年MM月DD日, MM-DD, MM/DD, MM月DD日)
+    const hasDate = /(?:\d{4}[-/\.年])?\d{1,2}[-/\.月]\d{1,2}日?/.test(text);
+    
+    // 檢查是否包含媒體名稱特徵 (去除日期、數字、常見符號後，還有剩下的中英文文字)
+    const strippedText = text.replace(/[0-9\-\/\.年月日至到~()（）當地時間\s:：,，]/g, '').trim();
+    const hasMedia = strippedText.length > 0 && !/^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*$/i.test(strippedText);
+    
+    return hasDate && hasMedia;
+  }, [children, href]);
 
-  if (!isUrl || isJustDateText) {
+  if (!isUrl || !isValidFormat) {
     return <>{children}</>;
   }
 
@@ -136,15 +142,15 @@ const CopyableSourceCard = React.memo(function CopyableSourceCard({ source }: { 
     }
   }, [source.uri]);
 
-  const isJustDateText = useMemo(() => {
+  const isValidFormat = useMemo(() => {
     const text = source.title || '';
-    const stripped = text.replace(/[0-9\-\/\.年月日至到~()（）當地時間\s]/g, '').trim();
-    if (stripped.length === 0) return true;
-    if (/^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*$/i.test(stripped)) return true;
-    return false;
+    const hasDate = /(?:\d{4}[-/\.年])?\d{1,2}[-/\.月]\d{1,2}日?/.test(text);
+    const strippedText = text.replace(/[0-9\-\/\.年月日至到~()（）當地時間\s:：,，]/g, '').trim();
+    const hasMedia = strippedText.length > 0 && !/^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*$/i.test(strippedText);
+    return hasDate && hasMedia;
   }, [source.title]);
 
-  if (!isUrl || isJustDateText) {
+  if (!isUrl || !isValidFormat) {
     return (
       <div className="block p-3 bg-[#111] tech-border pr-3">
         <p className="text-sm text-zinc-300 truncate">{source.title}</p>
@@ -663,10 +669,12 @@ export default function App() {
                         try {
                           const domain = new URL(s.uri).hostname.replace('www.', '');
                           const text = s.title || '';
-                          const stripped = text.replace(/[0-9\-\/\.年月日至到~()（）當地時間\s]/g, '').trim();
-                          const isJustDateText = stripped.length === 0 || /^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*$/i.test(stripped);
+                          const hasDate = /(?:\d{4}[-/\.年])?\d{1,2}[-/\.月]\d{1,2}日?/.test(text);
+                          const strippedText = text.replace(/[0-9\-\/\.年月日至到~()（）當地時間\s:：,，]/g, '').trim();
+                          const hasMedia = strippedText.length > 0 && !/^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*$/i.test(strippedText);
+                          const isValidFormat = hasDate && hasMedia;
                           
-                          if (isJustDateText) {
+                          if (!isValidFormat) {
                             return (
                               <span key={i} className="text-[10px] text-zinc-400 truncate max-w-[100px] border border-zinc-800 bg-zinc-900/50 px-1.5 py-0.5 rounded shrink-0 font-mono">
                                 {s.title || s.uri}
