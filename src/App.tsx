@@ -44,7 +44,7 @@ const getScoreStyle = (level: string) => {
   return `text-[1.5em] font-bold ${colorClass}`;
 };
 
-const CopyableMarkdownLink = React.memo(function CopyableMarkdownLink({ href, children, ...props }: any) {
+const CopyableMarkdownLink = React.memo(function CopyableMarkdownLink({ href, children, node, ...props }: any) {
   const [copied, setCopied] = useState(false);
 
   const handleCopy = useCallback((e: React.MouseEvent) => {
@@ -83,14 +83,17 @@ const CopyableMarkdownLink = React.memo(function CopyableMarkdownLink({ href, ch
     const hasDate = /(?:\d{4}[-/\.年])?\d{1,2}[-/\.月]\d{1,2}日?/.test(text);
     
     // 檢查是否包含媒體名稱特徵 (去除日期、數字、常見符號後，還有剩下的中英文文字)
-    const strippedText = text.replace(/[0-9\-\/\.年月日至到~()（）當地時間\s:：,，]/g, '').trim();
-    const hasMedia = strippedText.length > 0 && !/^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*$/i.test(strippedText);
+    const strippedText = text.replace(/[0-9\-\/\.年月日至到~()（）\[\]【】「」『』《》<>""''|_+?!@#$%^&*\s:：,，]/g, '').trim();
+    const hasMedia = /[a-zA-Z\u4e00-\u9fa5]/.test(strippedText) && 
+      !/^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*$/i.test(strippedText) &&
+      !/^(Mon|Tue|Wed|Thu|Fri|Sat|Sun)[a-z]*$/i.test(strippedText) &&
+      !/^(EST|EDT|CST|CDT|MST|MDT|PST|PDT|GMT|UTC)$/i.test(strippedText);
     
     return hasDate && hasMedia;
   }, [children, href]);
 
   if (!isUrl || !isValidFormat) {
-    return <>{children}</>;
+    return <span className="text-zinc-300">{children}</span>;
   }
 
   return (
@@ -145,8 +148,11 @@ const CopyableSourceCard = React.memo(function CopyableSourceCard({ source }: { 
   const isValidFormat = useMemo(() => {
     const text = source.title || '';
     const hasDate = /(?:\d{4}[-/\.年])?\d{1,2}[-/\.月]\d{1,2}日?/.test(text);
-    const strippedText = text.replace(/[0-9\-\/\.年月日至到~()（）當地時間\s:：,，]/g, '').trim();
-    const hasMedia = strippedText.length > 0 && !/^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*$/i.test(strippedText);
+    const strippedText = text.replace(/[0-9\-\/\.年月日至到~()（）\[\]【】「」『』《》<>""''|_+?!@#$%^&*\s:：,，]/g, '').trim();
+    const hasMedia = /[a-zA-Z\u4e00-\u9fa5]/.test(strippedText) && 
+      !/^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*$/i.test(strippedText) &&
+      !/^(Mon|Tue|Wed|Thu|Fri|Sat|Sun)[a-z]*$/i.test(strippedText) &&
+      !/^(EST|EDT|CST|CDT|MST|MDT|PST|PDT|GMT|UTC)$/i.test(strippedText);
     return hasDate && hasMedia;
   }, [source.title]);
 
